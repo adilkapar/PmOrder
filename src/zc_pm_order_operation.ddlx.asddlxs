@@ -1,0 +1,16 @@
+@Metadata.layer: #CUSTOMER
+annotate entity ZC_PM_ORDER_OPERATION
+    with 
+{
+   @UI.lineItem: [{ position: 10, label: 'Operation' }]
+  MaintenanceOrderOperation;
+
+  @UI.lineItem: [{ position: 30, label: 'Description' }]
+  OperationDescription;
+
+  @UI.lineItem: [{ position: 40, label: 'Work Center' }]
+  WorkCenter; 
+  @UI.lineItem: [{ position: 50, label: 'Work Center Description' }]
+  WorkCenterText;
+    
+}

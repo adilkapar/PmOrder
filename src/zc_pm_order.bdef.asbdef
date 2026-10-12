@@ -1,0 +1,45 @@
+projection implementation in class zbp_c_pm_order unique;
+strict ( 2 );
+use draft; // <-- Project the Draft Mode to the UI
+
+define behavior for ZC_PM_ORDER
+{
+  //  use create;
+  use update;
+  // Project the standard Draft Actions
+  use action Edit;
+  use action Activate;
+  use action Discard;
+  use action Resume;
+  use action Prepare;
+
+// ── Action'ları projection'da kullan ──
+
+  use action start_order;
+  use action confirm_order;
+  use action approve_order;
+  use action reject_order;
+  //use action release_order;
+
+  use association _Component { create; }
+  use association _Operation { create; }
+  use association _Status ;
+}
+
+define behavior for ZC_PM_ORDER_COMP
+{
+  use update;
+  use delete;
+  use association _Order { with draft; }
+}
+
+define behavior for ZC_PM_ORDER_OPERATION
+{
+  use update;
+  use delete;
+  use association _Order { with draft; }
+}
+define behavior for ZC_PM_ORDER_STATUS
+{
+  use association _Order;
+}

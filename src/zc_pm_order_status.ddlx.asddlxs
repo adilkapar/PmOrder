@@ -1,0 +1,37 @@
+@Metadata.layer: #CUSTOMER
+@UI.presentationVariant: [{
+  qualifier: 'SortByDate',
+  sortOrder: [
+    { by: 'Udate', direction: #DESC },
+    { by: 'Utime', direction: #DESC }
+  ],
+  visualizations: [{ type: #AS_LINEITEM }]
+}]
+annotate entity ZC_PM_ORDER_STATUS
+    with 
+{
+  @UI.lineItem: [{ position: 10, label: 'Status Text' }]
+  StatusText;
+  
+  @UI.lineItem: [{ position: 10, label: 'Status Code' }]
+  Stat;
+
+  @UI.lineItem: [{ position: 20, label: 'User' }]
+  Usnam;
+
+  @UI.lineItem: [{ position: 20, label: 'Date' }]
+  Udate;
+  
+  @UI.lineItem: [{ position: 20, label: 'Time' }]
+  Utime;
+  
+  @UI.lineItem: [{ position: 20, label: 'T-Code' }]
+  Tcode;  
+  
+  // You can hide the keys that shouldn't be edited by the user
+  @UI.hidden: true
+  MaintenanceOrder;
+
+  @UI.hidden: true
+  Objnr;
+}

@@ -1,0 +1,53 @@
+@Metadata.layer: #CUSTOMER
+annotate entity ZC_PM_ORDER_COMP with
+{
+  @UI.lineItem: [{ position: 10, label: 'Item' }]
+  ReservationItem;
+
+  @Consumption.valueHelpDefinition: [{
+    entity: { name: 'I_MaterialVH', element: 'Material' }
+  }]
+  @UI.lineItem: [{ position: 20, label: 'Material' }]
+  Material;
+
+  @UI.lineItem: [{ position: 40, label: 'Required Qty' }]
+  RequirementQuantityInBaseUnit;
+
+  @Consumption.valueHelpDefinition: [{
+      entity: { name: 'ZV_PM_ORDER_STOCK', element: 'BatchNumber' },
+      additionalBinding: [
+        { localElement: 'Plant',           element: 'Plant' },
+        { localElement: 'StorageLocation', element: 'StorageLocation' },
+        { localElement: 'Material',        element: 'Material' },
+        { localElement: 'BaseUnit',                       element: 'BaseUnit' }
+      ]
+    }]
+  @UI.lineItem: [{ position: 60, label: 'Batch' }]
+  MaintenanceOrderComponentBatch;
+  @Consumption.valueHelpDefinition: [{
+      entity: { name: 'ZV_PM_ORDER_STOCK', element: 'Plant' },
+      additionalBinding: [
+        { localElement: 'MaintenanceOrderComponentBatch', element: 'BatchNumber' },
+        { localElement: 'StorageLocation',                element: 'StorageLocation' },
+        { localElement: 'Material',                       element: 'Material' },
+        { localElement: 'BaseUnit',                       element: 'BaseUnit' }
+      ]
+    }]
+  @UI.lineItem: [{ position: 60, label: 'Plant' }]
+  Plant;
+  @Consumption.valueHelpDefinition: [{
+      entity: { name: 'ZV_PM_ORDER_STOCK', element: 'StorageLocation' },
+      additionalBinding: [
+        { localElement: 'MaintenanceOrderComponentBatch', element: 'BatchNumber' },
+        { localElement: 'Plant',                          element: 'Plant' },
+        { localElement: 'Material',                       element: 'Material' },
+        { localElement: 'BaseUnit',                       element: 'BaseUnit' }
+      ]
+    }]
+  @UI.lineItem: [{ position: 70, label: 'Storage Location' }]
+  StorageLocation;
+
+  @UI.lineItem: [{ position: 110, label: 'Requirement Date' }]
+  RequirementDate;
+
+}

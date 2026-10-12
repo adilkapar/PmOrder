@@ -1,0 +1,95 @@
+unmanaged implementation in class zbp_r_pm_order unique;
+strict ( 2 );
+with draft; // <-- Enables Draft Mode
+
+define behavior for ZR_PM_ORDER
+draft table zpm_order_d
+lock master
+total etag CreationTime // <-- Required by strict(2) to manage draft states
+authorization master ( instance )
+{
+
+  //  create;
+  //  update;
+  update ( features : instance );
+
+  draft action Edit;
+  draft action Activate;
+  draft action Discard;
+  draft action Resume;
+  draft determine action Prepare;
+
+  action ( features: instance ) start_order result [1] $self;
+
+  action ( features: instance ) confirm_order
+    parameter ZS_PM_CONFIRM_PARAM
+
+    result [1] $self;
+
+  action ( features: instance ) approve_order
+    parameter ZS_PM_APPROVE_PARAM result [1] $self;
+
+  action ( features: instance ) reject_order result [1] $self;
+
+  action ( features: instance ) release_order result [1] $self;
+
+  field ( readonly ) MaintOrdBasicStartDate,MaintOrdBasicStartTime,MaintOrdBasicEndDate,MaintOrdBasicEndTime,TechnicalCompletionDate,
+  LatestAcceptableCompletionDate,MaintOrderReferenceDate,MaintOrderReferenceTime,MainWorkCenterPlant,MaintenancePlant,MaintenancePlannerGroup,
+  CompanyCode,ResponsibleCostCenter,CreationTime;
+
+  association _Component { create;  with draft; }
+  association _Operation { create;  with draft; }
+  association _Partner ;
+  association _Status ;
+}
+
+define behavior for ZR_PM_ORDER_COMP alias component
+draft table zpm_orderc_d
+//early numbering
+lock dependent by _Order
+authorization dependent by _Order
+{
+  update;
+  delete;
+
+  field ( readonly ) MaintenanceOrder, MaintOrderComponentInternalID;
+  association _Order { with draft; }
+}
+
+define behavior for ZR_PM_ORDER_OPERATION //alias <alias_name>
+draft table zpm_ordero_d // <-- Auto-generate this table later
+lock dependent by _Order
+authorization dependent by _Order
+//etag master <field_name>
+{
+  update;
+  delete;
+
+  field ( readonly ) MaintenanceOrder, MaintOrderRoutingNumber, MaintenanceOrderOperation, workcentertext;
+  association _Order { with draft; }
+}
+
+define behavior for ZR_PM_ORDER_PARTNER //alias <alias_name>
+draft table zpm_orderp_d // <-- Auto-generate this table later
+lock dependent by _Order
+authorization dependent by _Order
+//etag master <field_name>
+{
+  update;
+  delete;
+
+  field ( readonly ) MaintenanceOrder, Partner, PartnerFunction, PartnerCounter;
+  association _Order  { with draft; }
+}
+define behavior for ZR_PM_ORDER_STATUS //alias <alias_name>
+draft table zpm_orders_d // <-- Auto-generate this table later
+lock dependent by _Order
+authorization dependent by _Order
+//etag master <field_name>
+{
+  update;
+  delete;
+
+  field ( readonly ) Objnr, Stat, Chgnr, MaintenanceOrder;
+  association _Order  { with draft; }
+}

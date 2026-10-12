@@ -1,0 +1,135 @@
+@Metadata.layer: #CUSTOMER 
+annotate entity ZC_PM_ORDER
+    with 
+{
+  // ════════════════════════════════════════════════════
+  // LIST REPORT — Kolon & Selection Field tanımları
+  // İstenen alanlar: MaintenanceOrder, MaintPriority,
+  // MaintenanceOrderDesc, MaintenanceNotification, 
+  // CreationDate, CreatedByUser, Equipment,
+  // MaintenancePlanningPlant, NotifWorkCenter (arbpl)
+  // ════════════════════════════════════════════════════
+  
+
+  @UI.lineItem:       [{ position: 10, label: 'Order No' }]
+  @UI.selectionField: [{ position: 10 }]
+  MaintenanceOrder;
+
+  @UI.lineItem:       [{ position: 20, label: 'Description' }]
+  MaintenanceOrderDesc;
+
+  @UI.lineItem:       [{ position: 30, label: 'Priority' }]
+  @UI.selectionField: [{ position: 30 }]
+  MaintPriority;
+
+  @UI.lineItem:       [{ position: 40, label: 'Notification' }]
+  @UI.selectionField: [{ position: 40 }]
+  MaintenanceNotification;
+
+  @UI.lineItem:       [{ position: 50, label: 'BreakDown duration (Hour)' }]
+  @UI.selectionField: [{ position: 50 }]
+  break_down_duration;
+  
+  @UI.lineItem:       [{ position: 50, label: 'Task duration (Hour)' }]
+  @UI.selectionField: [{ position: 50 }]
+  task_duration;  
+
+  @UI.lineItem:       [{ position: 50, label: 'Created On' }]
+  @UI.selectionField: [{ position: 50 }]
+  CreationDate;
+
+  @UI.lineItem:       [{ position: 60, label: 'Created By' }]
+  CreatedByUser;
+
+  @UI.lineItem:       [{ position: 70, label: 'Equipment' }]
+  @UI.selectionField: [{ position: 60 }]
+  Equipment;
+
+  @UI.lineItem:       [{ position: 80, label: 'Planning Plant' }]
+  @UI.selectionField: [{ position: 20 }]
+  MaintenancePlanningPlant;
+
+  @UI.lineItem:       [{ position: 90, label: 'Work Center' }]
+  WorkCenterInternalID;
+
+  @Consumption.valueHelpDefinition: [{
+    entity: { name: 'ZV_PM_ORDER_STATUS_TXT', element: 'Stat' }
+  }]
+  @UI.selectionField: [{ position: 10 }]
+  Stat;
+
+
+  @UI.lineItem: [ 
+    { position: 100, label: 'Actions' },
+    { type: #FOR_ACTION, dataAction: 'start_order',   label: 'Start',   position: 101, inline: true, importance: #HIGH, criticality: 'BStatus1' },
+    { type: #FOR_ACTION, dataAction: 'confirm_order',  label: 'Confirm', position: 102, inline: true, importance: #HIGH, criticality: 'BStatus2' },
+    { type: #FOR_ACTION, dataAction: 'approve_order',  label: 'Approve', position: 103, inline: true, importance: #HIGH, criticality: 'BStatus3' },
+    { type: #FOR_ACTION, dataAction: 'reject_order',  label: 'Reject', position: 103, inline: true, importance: #HIGH, criticality: 'BStatus4' } 
+  ]
+  PersonnelNumber;
+  // ════════════════════════════════════════════════════
+  // OBJECT PAGE — Header
+  // ════════════════════════════════════════════════════
+
+  @UI.fieldGroup: [{ qualifier: 'HeaderGroup', position: 30, label: 'Order Type' }]
+  MaintOrderType;
+
+  @UI.fieldGroup: [{ qualifier: 'HeaderGroup', position: 70, label: 'Phase' }]
+  MaintenanceProcessingPhase;
+
+  @UI.fieldGroup: [{ qualifier: 'HeaderGroup', position: 80, label: 'Process Phase' }]
+  MaintOrdProcessPhaseCode;
+
+  // ════════════════════════════════════════════════════
+  // OBJECT PAGE — Dates, Plant & Work Center
+  // ════════════════════════════════════════════════════
+
+  @UI.identification: [
+    { type: #FOR_ACTION, dataAction: 'start_order',   label: 'Start Order',   position: 10 },
+    { type: #FOR_ACTION, dataAction: 'confirm_order',  label: 'Confirm Order', position: 20 },
+    { type: #FOR_ACTION, dataAction: 'approve_order',  label: 'Approve Order', position: 30 },
+    { type: #FOR_ACTION, dataAction: 'reject_order',  label: 'Reject Order', position: 40 }
+  ]
+  MaintenanceOrderInternalID;
+  @UI.fieldGroup: [{ qualifier: 'DatesPlantGroup', position: 10, label: 'Basic Start Date' }]
+  MaintOrdBasicStartDate;
+
+  @UI.fieldGroup: [{ qualifier: 'DatesPlantGroup', position: 20, label: 'Basic Start Time' }]
+  MaintOrdBasicStartTime;
+
+  @UI.fieldGroup: [{ qualifier: 'DatesPlantGroup', position: 30, label: 'Basic End Date' }]
+  MaintOrdBasicEndDate;
+
+  @UI.fieldGroup: [{ qualifier: 'DatesPlantGroup', position: 40, label: 'Basic End Time' }]
+  MaintOrdBasicEndTime;
+
+  @UI.fieldGroup: [{ qualifier: 'DatesPlantGroup', position: 70, label: 'Technical Completion' }]
+  TechnicalCompletionDate;
+
+  @UI.fieldGroup: [{ qualifier: 'DatesPlantGroup', position: 80, label: 'Latest Acceptable Completion' }]
+  LatestAcceptableCompletionDate;
+
+  @UI.fieldGroup: [{ qualifier: 'DatesPlantGroup', position: 90, label: 'Reference Date' }]
+  MaintOrderReferenceDate;
+
+  @UI.fieldGroup: [{ qualifier: 'DatesPlantGroup', position: 100, label: 'Reference Time' }]
+  MaintOrderReferenceTime;
+
+  @UI.fieldGroup: [{ qualifier: 'DatesPlantGroup', position: 120, label: 'Work Center Plant' }]
+  MainWorkCenterPlant;
+
+  @UI.fieldGroup: [{ qualifier: 'DatesPlantGroup', position: 130, label: 'Maintenance Plant' }]
+  MaintenancePlant;
+
+  @UI.fieldGroup: [{ qualifier: 'DatesPlantGroup', position: 150, label: 'Planner Group' }]
+  MaintenancePlannerGroup;
+
+  @UI.fieldGroup: [{ qualifier: 'DatesPlantGroup', position: 160, label: 'Company Code' }]
+  CompanyCode;
+
+  @UI.fieldGroup: [{ qualifier: 'DatesPlantGroup', position: 170, label: 'Cost Center' }]
+  ResponsibleCostCenter;
+
+  @UI.fieldGroup: [{ qualifier: 'DatesPlantGroup', position: 200, label: 'Creation Time' }]
+  CreationTime;
+}
