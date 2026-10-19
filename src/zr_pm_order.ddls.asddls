@@ -228,10 +228,4 @@ define root view entity ZR_PM_ORDER
 
 }
 
-where
-       _order.MaintenanceOrderType       = 'BM'
-  and(
-       _order.MaintenanceProcessingPhase = '0'
-    or _order.MaintenanceProcessingPhase = '1'
-    or _order.MaintenanceProcessingPhase = '2'
-  )
+

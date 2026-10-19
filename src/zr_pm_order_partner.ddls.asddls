@@ -12,3 +12,4 @@ define view entity ZR_PM_ORDER_PARTNER
 
       _Order
 }
+

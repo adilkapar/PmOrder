@@ -1,0 +1,9 @@
+@EndUserText.label: 'Approve Order Parameters'
+define abstract entity ZS_PM_APPROVE_PARAM
+{
+  @EndUserText.label: 'Actual End Date'
+  ActualEndDate   : abap.dats;
+
+  @EndUserText.label: 'Actual End Time'
+  ActualEndTime   : abap.tims;
+}

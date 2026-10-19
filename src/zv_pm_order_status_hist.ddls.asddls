@@ -20,4 +20,4 @@ define view entity ZV_PM_ORDER_STATUS_HIST as select from jcds as j
     i.MaintenanceOrder,
     t.txt30 as StatusText
 
-}   where j.inact = ''
+}   where j.inact = '' 

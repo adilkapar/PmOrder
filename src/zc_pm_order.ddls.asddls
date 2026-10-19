@@ -72,8 +72,8 @@ define root view entity ZC_PM_ORDER   provider contract transactional_query
       MaintenanceOrderDesc,
       MaintPriority,
       MaintPriorityType,
-      MaintenanceNotification, 
-      Stat,
+      MaintenanceNotification,
+      stat,
       CreationDate,
       CreationTime,
       CreatedByUser,
@@ -159,3 +159,8 @@ define root view entity ZC_PM_ORDER   provider contract transactional_query
       task_duration,
       break_down_duration
 }
+where
+       MaintOrderType       = 'BM'
+and (   MaintenanceProcessingPhase = '0'
+       or MaintenanceProcessingPhase = '1'
+       or MaintenanceProcessingPhase = '2' )

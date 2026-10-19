@@ -93,6 +93,7 @@ CLASS lhc_ZR_PM_ORDER DEFINITION INHERITING FROM cl_abap_behavior_handler.
 
   PRIVATE SECTION.
 
+    " Action metodları — RESULT parametresi var
     METHODS start_order FOR MODIFY
       IMPORTING keys FOR ACTION zr_pm_order~start_order RESULT result.
 
@@ -105,6 +106,9 @@ CLASS lhc_ZR_PM_ORDER DEFINITION INHERITING FROM cl_abap_behavior_handler.
     METHODS reject_order FOR MODIFY
       IMPORTING keys FOR ACTION zr_pm_order~reject_order RESULT result.
 
+    "METHODS release_order FOR MODIFY
+    "  IMPORTING keys FOR ACTION zr_pm_order~release_order RESULT result.
+
     METHODS get_instance_features FOR INSTANCE FEATURES
       IMPORTING keys REQUEST requested_features FOR zr_pm_order RESULT result.
 
@@ -113,6 +117,7 @@ CLASS lhc_ZR_PM_ORDER DEFINITION INHERITING FROM cl_abap_behavior_handler.
 
     METHODS update FOR MODIFY
       IMPORTING entities FOR UPDATE zr_pm_order.
+
 
     METHODS read FOR READ
       IMPORTING keys FOR READ zr_pm_order RESULT result.
@@ -140,6 +145,9 @@ CLASS lhc_ZR_PM_ORDER DEFINITION INHERITING FROM cl_abap_behavior_handler.
     METHODS is_supervisor
       RETURNING VALUE(rv_result) TYPE abap_bool.
 
+    METHODS is_technician
+      RETURNING VALUE(rv_result) TYPE abap_bool.
+
     METHODS get_user_status
       IMPORTING iv_aufnr         TYPE aufnr
       RETURNING VALUE(rv_status) TYPE char20.
@@ -149,10 +157,11 @@ ENDCLASS.
 
 CLASS lhc_ZR_PM_ORDER IMPLEMENTATION.
   METHOD cba_Component.
-    DATA: lv_max_item_i(4) TYPE N.
+    DATA: lv_max_item_i(4) TYPE n.
     LOOP AT entities_cba INTO DATA(ls_comp).
+      " 1. Veritabanından bu siparişe ait en büyük kalem numarasını bul (Tablo adını kendi tablona göre düzelt)
       SELECT SINGLE MAX( reservationitem ) AS reservationitem, MaintenanceOrderOperation
-        FROM zr_pm_order_comp
+        FROM zr_pm_order_comp " <-- Veritabanı tablonuzun adını buraya yazın
         WHERE maintenanceorder = @ls_comp-%key-maintenanceorder
         GROUP BY MaintenanceOrderOperation
         INTO @DATA(lv_db_max).
@@ -164,13 +173,14 @@ CLASS lhc_ZR_PM_ORDER IMPLEMENTATION.
       ENDIF..
       lv_max_item_i = lv_db_max-reservationitem.
 
+      " 2. Aynı LUW içinde daha önce buffer'a eklenmiş kalemler varsa en büyüğünü al
       LOOP AT gt_order_component_buffer INTO DATA(ls_buf)
            WHERE maintenanceorder = ls_comp-%key-maintenanceorder.
         IF CONV i( ls_buf-reservationitem ) > lv_max_item_i.
           lv_max_item_i = CONV i( ls_buf-reservationitem ).
         ENDIF.
       ENDLOOP.
-        lv_max_item_i = CONV i( lv_db_max-reservationitem ) + 1.
+      lv_max_item_i = CONV i( lv_db_max-reservationitem ) + 1.
       LOOP AT ls_comp-%target INTO DATA(ls_target).
         APPEND INITIAL LINE TO gt_order_component_buffer ASSIGNING FIELD-SYMBOL(<new>).
         MOVE-CORRESPONDING ls_target TO <new>.
@@ -192,7 +202,7 @@ CLASS lhc_ZR_PM_ORDER IMPLEMENTATION.
     DATA: lv_max_item_i TYPE i.
     LOOP AT entities_cba INTO DATA(ls_op).
       SELECT SINGLE MAX( MaintenanceOrderOperation ) AS MaintenanceOrderOperation, Plant
-        FROM zr_pm_order_operation
+        FROM zr_pm_order_operation " <-- Veritabanı tablonuzun adını buraya yazın
         WHERE MaintenanceOrder = @ls_op-%key-maintenanceorder
         GROUP BY Plant
         INTO @DATA(lv_db_max)
@@ -230,6 +240,7 @@ CLASS lhc_ZR_PM_ORDER IMPLEMENTATION.
           lv_html_string  TYPE string,
           lv_app_url      TYPE string.
 
+    " Uygulama linkinizi buraya tanımlayın (Fiori Launchpad veya uygulamanızın direkt URL'si)
     CASE sy-sysid.
       WHEN 'DS4'.
         lv_app_url = 'https://sistem-adresi.com/sap/bc/ui2/flp?#Uygulama-SemantikObje'.
@@ -237,17 +248,20 @@ CLASS lhc_ZR_PM_ORDER IMPLEMENTATION.
         lv_app_url = 'https://sistem-adresi.com/sap/bc/ui2/flp?#Uygulama-SemantikObje'.
     ENDCASE.
 
+    " HTML Body'sini oluşturma
     lv_html_string = |<html><body>| &&
                      | <p>{ is_mail-body }</p>| &&
                      | <br><br>| &&
                      | <p>Please click <a href="{ lv_app_url }">here</a> for open the document.</p>| &&
                      |</body></html>|.
 
+    " String metni SOLI tablosuna (bcsy_text) çevirme
     lt_body = cl_document_bcs=>string_to_soli( lv_html_string ).
 
     TRY.
         lo_send_request = cl_bcs=>create_persistent( ).
 
+        " i_type değerini RAW yerine HTM yapıyoruz
         lo_document = cl_document_bcs=>create_document(
           i_type    = 'HTM'
           i_text    = lt_body
@@ -255,14 +269,17 @@ CLASS lhc_ZR_PM_ORDER IMPLEMENTATION.
         ).
         lo_send_request->set_document( lo_document ).
 
+        " Gönderici oluşturma
         lo_sender = cl_sapuser_bcs=>create( sy-uname ).
         lo_send_request->set_sender( lo_sender ).
 
+        " Alıcı email adresini bulma
         SELECT SINGLE smtp_addr INTO @DATA(lv_smtp)
           FROM adr6 AS a
           INNER JOIN usr21 AS u ON a~addrnumber EQ u~addrnumber AND a~persnumber EQ u~persnumber
           WHERE bname EQ @is_mail-uname.
 
+        " Eğer kullanıcının mail adresi tanımlıysa ekle ve gönder
         IF lv_smtp IS NOT INITIAL.
           lo_recipient = cl_cam_address_bcs=>create_internet_address( lv_smtp ).
           lo_send_request->add_recipient( lo_recipient ).
@@ -272,6 +289,7 @@ CLASS lhc_ZR_PM_ORDER IMPLEMENTATION.
         ENDIF.
 
       CATCH cx_bcs INTO DATA(lx_bcs).
+        " Hata yönetimi (Gerekirse lx_bcs->get_text( ) ile hata mesajını loglayabilirsiniz)
     ENDTRY.
   ENDMETHOD.
 
@@ -281,6 +299,51 @@ CLASS lhc_ZR_PM_ORDER IMPLEMENTATION.
 
   METHOD update.
     LOOP AT entities INTO DATA(ls_entity).
+
+*      DATA(ls_update) = VALUE lhc_zr_pm_order=>ty_order_update( maintenanceorder = ls_entity-MaintenanceOrder ).
+*
+*      " Check if Notification Text was changed
+*      IF ls_entity-%control-ShortText = if_abap_behv=>mk-on.
+*        ls_update-short_text   = ls_entity-ShortText.
+*        ls_update-short_text_x = abap_true.
+*      ENDIF.
+*
+*      " Check if Equipment was changed
+*      IF ls_entity-%control-EquipmentNo = if_abap_behv=>mk-on.
+*        ls_update-equipment   = ls_entity-EquipmentNo.
+*        ls_update-equipment_x = abap_true.
+*      ENDIF.
+*
+*      " Check if Workcenter was changed
+*      IF ls_entity-%control-Workcenter = if_abap_behv=>mk-on.
+*        " Convert the Workcenter string back to Internal ID just like we did in Create
+*        IF ls_entity-Workcenter IS NOT INITIAL.
+*          SELECT SINGLE workcenterinternalid FROM i_workcenter
+*            WHERE workcenter = @ls_entity-Workcenter
+*            INTO @ls_update-wkctr.
+*        ENDIF.
+*        ls_update-wkctr_x = abap_true.
+*      ENDIF.
+*
+*      " Only append to the buffer if at least one field was actually changed
+*      IF ls_update-short_text_x = abap_true OR
+*         ls_update-equipment_x  = abap_true OR
+*         ls_update-wkctr_x      = abap_true.
+*
+*        APPEND ls_update TO lhc_zr_pm_notif=>gt_notif_update_buffer.
+*
+*      ENDIF.
+
+*      IF ls_entity-%control-BasicCode = if_abap_behv=>mk-on.
+*        ls_update-dl_code   = ls_entity-BasicCode.
+*        ls_update-dl_code_x = abap_true.
+*      ENDIF.
+*
+*      IF ls_entity-%control-DetailCode = if_abap_behv=>mk-on.
+*        ls_update-d_code   = ls_entity-DetailCode.
+*        ls_update-d_code_x = abap_true.
+*      ENDIF.
+
     ENDLOOP.
   ENDMETHOD.
 
@@ -295,6 +358,8 @@ CLASS lhc_ZR_PM_ORDER IMPLEMENTATION.
     ENDIF.
     IF is_supervisor( ) = abap_false.
 
+      " Teknisyen: sadece partner tablosunda kendisi olan siparişleri göster
+      " IHPA: objnr = 'OR' + aufnr, parvw = 'VU' (Responsible Person)
       DATA lt_filtered LIKE lt_active_data.
 
       LOOP AT lt_active_data INTO DATA(ls_check).
@@ -303,6 +368,7 @@ CLASS lhc_ZR_PM_ORDER IMPLEMENTATION.
         ENDIF.
       ENDLOOP.
 
+      " Filtrelenmiş listeyi kullan
       lt_active_data = lt_filtered.
 
     ENDIF.
@@ -353,8 +419,12 @@ CLASS lhc_ZR_PM_ORDER IMPLEMENTATION.
   ENDMETHOD.
 
 
+  " ════════════════════════════════════════════════════════════════════
+  " GET_INSTANCE_FEATURES
+  " ════════════════════════════════════════════════════════════════════
   METHOD get_instance_features.
     DATA(lv_is_sup) = is_supervisor( ).
+    DATA(lv_is_tec) = is_technician( ).
 
     LOOP AT keys INTO DATA(ls_key).
       DATA(lv_is_notf) = is_notifier( ls_key-maintenanceorder ).
@@ -368,15 +438,21 @@ CLASS lhc_ZR_PM_ORDER IMPLEMENTATION.
 
       CASE lv_status.
         WHEN 'INIT' .
-          lv_start_fc = if_abap_behv=>fc-o-enabled.
+          IF lv_is_sup = abap_true or lv_is_tec = abap_true.
+            lv_start_fc = if_abap_behv=>fc-o-enabled.
+          ENDIF.
         WHEN 'STARTED' OR 'REJECT'.
-          lv_confirm_fc = if_abap_behv=>fc-o-enabled.
+          IF lv_is_sup = abap_true or lv_is_tec = abap_true.
+            lv_confirm_fc = if_abap_behv=>fc-o-enabled.
+          ENDIF.
         WHEN 'CONFIRMED'.
-          IF lv_is_sup = abap_true OR lv_is_notf = abap_true.
+          IF lv_is_tec = abap_false OR lv_is_notf = abap_true or lv_is_sup = abap_true.
             lv_approve_fc = if_abap_behv=>fc-o-enabled.
           ENDIF.
         WHEN 'APPROVED'.
-
+          IF lv_is_tec = abap_false OR lv_is_notf = abap_true or lv_is_sup = abap_true.
+            lv_approve_fc = if_abap_behv=>fc-o-enabled.
+          ENDIF.
       ENDCASE.
 
       APPEND VALUE #(
@@ -390,6 +466,10 @@ CLASS lhc_ZR_PM_ORDER IMPLEMENTATION.
     ENDLOOP.
   ENDMETHOD.
 
+  " ════════════════════════════════════════════════════════════════════
+  " ACTION: START ORDER
+  " Validasyon + buffer + result doldur (CALL FUNCTION YOK)
+  " ════════════════════════════════════════════════════════════════════
   METHOD start_order.
     READ ENTITIES OF zr_pm_order IN LOCAL MODE
       ENTITY zr_pm_order
@@ -400,6 +480,7 @@ CLASS lhc_ZR_PM_ORDER IMPLEMENTATION.
 
       DATA(lv_aufnr) = ls_order-maintenanceorder.
 
+      " Validasyon
       DATA(lv_status) = get_user_status( lv_aufnr ).
       IF lv_status <> 'INIT'.
         APPEND VALUE #(
@@ -416,6 +497,7 @@ CLASS lhc_ZR_PM_ORDER IMPLEMENTATION.
         CONTINUE.
       ENDIF.
 
+      " Buffer'a yaz
       APPEND VALUE ty_order_start(
         maintenanceorder        = lv_aufnr
         NotificationCreatedUser = ls_order-NotificationCreatedUser
@@ -424,11 +506,13 @@ CLASS lhc_ZR_PM_ORDER IMPLEMENTATION.
         maintordbasicstarttime  = sy-uzeit
       ) TO gt_order_start_buffer.
 
+      " Result doldur
       INSERT VALUE #(
         maintenanceorder = lv_aufnr
         %param           = CORRESPONDING #( ls_order )
       ) INTO TABLE result.
 
+      " Başarı mesajı
       APPEND new_message( id       = '00'
                           number   = '001'
                           severity = if_abap_behv_message=>severity-success
@@ -439,6 +523,9 @@ CLASS lhc_ZR_PM_ORDER IMPLEMENTATION.
     ENDLOOP.
   ENDMETHOD.
 
+  " ════════════════════════════════════════════════════════════════════
+  " ACTION: CONFIRM ORDER (Popup)
+  " ════════════════════════════════════════════════════════════════════
   METHOD confirm_order.
 
     READ ENTITIES OF zr_pm_order IN LOCAL MODE
@@ -457,8 +544,10 @@ CLASS lhc_ZR_PM_ORDER IMPLEMENTATION.
         CONTINUE.
       ENDIF.
 
+      " Parametre okuması için ilgili anahtarı bul
       READ TABLE keys INTO DATA(ls_key) WITH KEY maintenanceorder = lv_aufnr.
 
+      " Buffer'a yaz
       APPEND VALUE ty_order_confirm(
         maintenanceorder        = lv_aufnr
         NotificationCreatedUser = ls_order-NotificationCreatedUser
@@ -479,6 +568,9 @@ CLASS lhc_ZR_PM_ORDER IMPLEMENTATION.
     ENDLOOP.
   ENDMETHOD.
 
+  " ════════════════════════════════════════════════════════════════════
+  " ACTION: APPROVE ORDER (Popup)
+  " ════════════════════════════════════════════════════════════════════
   METHOD approve_order.
     READ ENTITIES OF zr_pm_order IN LOCAL MODE
           ENTITY zr_pm_order
@@ -543,6 +635,66 @@ CLASS lhc_ZR_PM_ORDER IMPLEMENTATION.
     ENDLOOP.
   ENDMETHOD.
 
+
+
+*  METHOD release_order.
+*
+*    LOOP AT keys INTO DATA(ls_key).
+*
+*      DATA(lv_aufnr) = ls_key-maintenanceorder.
+*
+*      SELECT SINGLE * FROM zr_pm_order
+*        WHERE maintenanceorder = @lv_aufnr
+*        INTO @DATA(ls_data_c).
+*
+*
+*      DATA(lv_status) = get_user_status( lv_aufnr ).
+*      IF lv_status <> 'CONFIRMED'.
+*        APPEND VALUE #(
+*          maintenanceorder   = lv_aufnr
+*          %fail-cause        = if_abap_behv=>cause-unspecific
+*        ) TO failed-zr_pm_order.
+*
+*        APPEND new_message( id       = '00'
+*                            number   = '001'
+*                            severity = if_abap_behv_message=>severity-error
+*                            v1       = 'Order is not in CONFIRMED status:'
+*                            v2       = lv_aufnr )
+*               TO reported-%other.
+*        CONTINUE.
+*      ENDIF.
+*
+*      " Buffer'a yaz
+*      APPEND VALUE ty_order_approve(
+*        _ar              = 'Q'
+*        maintenanceorder = lv_aufnr
+*        notificationnumber = ls_data_c-MaintenanceNotification
+*      ) TO gt_order_approve_buffer.
+*
+*      " Result doldur
+*      SELECT SINGLE * FROM zr_pm_order
+*        WHERE maintenanceorder = @lv_aufnr
+*        INTO @DATA(ls_data_a).
+*
+*      INSERT VALUE #(
+*        maintenanceorder = lv_aufnr
+*        %param           = CORRESPONDING #( ls_data_a )
+*      ) INTO TABLE result.
+*
+*      APPEND new_message( id       = '00'
+*                          number   = '001'
+*                          severity = if_abap_behv_message=>severity-success
+*                          v1       = 'Order approved:'
+*                          v2       = lv_aufnr )
+*             TO reported-%other.
+*
+*    ENDLOOP.
+*  ENDMETHOD.
+
+
+  " ════════════════════════════════════════════════════════════════════
+  " PRIVATE: is_notifier
+  " ════════════════════════════════════════════════════════════════════
   METHOD is_notifier.
     SELECT COUNT(*) FROM i_notification
       WHERE CreatedByUser = @sy-uname
@@ -567,6 +719,24 @@ CLASS lhc_ZR_PM_ORDER IMPLEMENTATION.
 
   ENDMETHOD.
 
+  METHOD is_technician.
+
+    AUTHORITY-CHECK OBJECT 'ZPM_NOTIF'
+    ID 'ZPM_ROLE' FIELD 'TEC'
+    ID 'ACTVT'    DUMMY.
+
+
+    IF sy-subrc = 0.
+      rv_result = abap_true.
+    ELSE.
+      rv_result = abap_false.
+    ENDIF.
+
+  ENDMETHOD.
+
+  " ════════════════════════════════════════════════════════════════════
+  " PRIVATE: Sipariş kullanıcı statüsünü oku
+  " ════════════════════════════════════════════════════════════════════
   METHOD get_user_status.
 
     DATA: lv_objnr TYPE j_objnr.
@@ -615,6 +785,8 @@ ENDCLASS.
 " =====================================================================
 CLASS lhc_ZR_PM_ORDER_COMP DEFINITION INHERITING FROM cl_abap_behavior_handler.
   PRIVATE SECTION.
+*    METHODS earlynumbering_cba_Component FOR NUMBERING
+*      IMPORTING entities FOR CREATE zr_pm_order_comp.
     METHODS read FOR READ
       IMPORTING keys FOR READ component RESULT result.
     METHODS rba_Order FOR READ
@@ -629,11 +801,17 @@ ENDCLASS.
 
 CLASS lhc_ZR_PM_ORDER_COMP IMPLEMENTATION.
   METHOD read.
+    " Draft modunda framework kendi okuma işlemini yapar
+    " Özel bir filtreleme gerekmiyorsa boş bırakılabilir
   ENDMETHOD.
   METHOD rba_Order.
+    " Association okuma - framework yönetir
   ENDMETHOD.
   METHOD update.
+    "BREAK-POINT.
     LOOP AT entities INTO DATA(ls_update).
+
+      " Add it to the global buffer with the 'Delete' flag
       DELETE lhc_ZR_PM_ORDER=>gt_order_component_buffer WHERE ReservationItem = ls_update-ReservationItem.
       APPEND INITIAL LINE TO lhc_ZR_PM_ORDER=>gt_order_component_buffer ASSIGNING FIELD-SYMBOL(<update>).
       MOVE-CORRESPONDING ls_update TO <update>.
@@ -643,20 +821,38 @@ CLASS lhc_ZR_PM_ORDER_COMP IMPLEMENTATION.
   ENDMETHOD.
 
   METHOD delete_component.
+    " This method is called when the user removes a partner and clicks Save.
 
     LOOP AT keys INTO DATA(ls_deleted_comp).
 
+      " Add it to the global buffer with the 'Delete' flag
       APPEND VALUE #(
           MaintenanceOrder              = ls_deleted_comp-MaintenanceOrder
           MaintOrderComponentInternalID = ls_deleted_comp-MaintOrderComponentInternalID
           ReservationItem               = ls_deleted_comp-ReservationItem
 
-          updkz                         = 'D'
+          updkz                         = 'D' " D = Delete
       ) TO lhc_ZR_PM_ORDER=>gt_order_component_buffer.
 
     ENDLOOP.
 
   ENDMETHOD.
+*  METHOD earlynumbering_cba_Component.
+*    LOOP AT entities INTO DATA(ls_entity).
+*
+*      " UUID üret
+*      DATA(lv_uuid) = cl_system_uuid=>create_uuid_x16_static( ).
+*
+*      " MAPPED'e yaz - bu zorunlu
+*      APPEND VALUE #(
+*        %cid                               = ls_entity-%cid
+*        %is_draft                          = ls_entity-%is_draft
+*        %key-MaintenanceOrder              = ls_entity-MaintenanceOrder
+*        %key-MaintOrderComponentInternalID = lv_uuid
+*      ) TO mapped-zr_pm_order_comp.
+*
+*    ENDLOOP.
+*  ENDMETHOD.
 ENDCLASS.
 
 
@@ -681,6 +877,7 @@ CLASS lhc_ZR_PM_ORDER_OPERATION IMPLEMENTATION.
   METHOD rba_Order. ENDMETHOD.
   METHOD update.
     LOOP AT entities INTO DATA(ls_update).
+      " Add it to the global buffer with the 'Delete' flag
       DELETE lhc_ZR_PM_ORDER=>gt_order_operation_buffer WHERE MaintenanceOrderOperation = ls_update-MaintenanceOrderOperation.
       APPEND INITIAL LINE TO lhc_ZR_PM_ORDER=>gt_order_operation_buffer ASSIGNING FIELD-SYMBOL(<update>).
       MOVE-CORRESPONDING ls_update TO <update>.
@@ -693,11 +890,12 @@ CLASS lhc_ZR_PM_ORDER_OPERATION IMPLEMENTATION.
 
     LOOP AT keys INTO DATA(ls_deleted_ord).
 
+      " Add it to the global buffer with the 'Delete' flag
       APPEND VALUE #(
           MaintenanceOrder          = ls_deleted_ord-MaintenanceOrder
           MaintenanceOrderOperation = ls_deleted_ord-MaintenanceOrderOperation
           MaintOrderRoutingNumber   = ls_deleted_ord-MaintOrderRoutingNumber
-          updkz                     = 'D'
+          updkz                     = 'D'     " D = Delete
       ) TO lhc_ZR_PM_ORDER=>gt_order_operation_buffer.
 
     ENDLOOP.
@@ -707,7 +905,7 @@ ENDCLASS.
 
 
 " =====================================================================
-" SAVER CLASS
+" SAVER CLASS — TÜM BAPI ÇAĞRILARI BURADA
 " =====================================================================
 CLASS lsc_ZR_PM_ORDER DEFINITION INHERITING FROM cl_abap_behavior_saver.
   PROTECTED SECTION.
@@ -754,6 +952,8 @@ CLASS lsc_ZR_PM_ORDER IMPLEMENTATION.
         start_date = ls_start-maintordbasicstartdate
         basicstart = ls_start-maintordbasicstarttime
         sched_type = '5'
+        "finish_date = '00000000'
+        "basic_fin   = '000000'
       ) TO lt_header_s.
 
       APPEND VALUE bapi_alm_order_headers_up(
@@ -789,6 +989,7 @@ CLASS lsc_ZR_PM_ORDER IMPLEMENTATION.
 
       ENDLOOP.
 
+*      IF lv_err_s = abap_false.
       DATA(lv_objnr_s) = CONV j_objnr( |OR{ ls_start-maintenanceorder }| ).
       CALL FUNCTION 'STATUS_CHANGE_EXTERN'
         EXPORTING
@@ -799,6 +1000,8 @@ CLASS lsc_ZR_PM_ORDER IMPLEMENTATION.
           status_inconsistent = 2
           status_not_allowed  = 3
           OTHERS              = 4.
+*      ENDIF.
+
 
     ENDLOOP.
     CLEAR lhc_zr_pm_order=>gt_order_start_buffer.
@@ -824,7 +1027,7 @@ CLASS lsc_ZR_PM_ORDER IMPLEMENTATION.
 
       CLEAR: ls_return_c, lt_timetickets, lt_alm_ret.
 
-      DATA(lv_operation) = '0010'.
+      DATA(lv_operation) = '0010'. " Varsayılan
       READ TABLE lt_operations INTO DATA(ls_op) WITH KEY maintenanceorder = ls_conf-maintenanceorder.
       IF sy-subrc = 0.
         lv_operation = ls_op-maintenanceorderoperation.
@@ -867,6 +1070,11 @@ CLASS lsc_ZR_PM_ORDER IMPLEMENTATION.
         ) TO reported-zr_pm_order.
       ENDLOOP.
 
+*      IF lv_err_c = abap_false.
+*        CALL FUNCTION 'BAPI_TRANSACTION_COMMIT'
+*          EXPORTING
+*            wait = abap_true.
+
       DATA(lv_objnr_c) = CONV j_objnr( |OR{ ls_conf-maintenanceorder }| ).
       CALL FUNCTION 'STATUS_CHANGE_EXTERN'
         EXPORTING
@@ -877,7 +1085,9 @@ CLASS lsc_ZR_PM_ORDER IMPLEMENTATION.
           status_inconsistent = 2
           status_not_allowed  = 3
           OTHERS              = 4.
-
+*      ELSE.
+*        CALL FUNCTION 'BAPI_TRANSACTION_ROLLBACK'.
+*      ENDIF.
       lhc_zr_pm_order=>gs_mail_daata-uname = ls_conf-NotificationCreatedUser.
       lhc_zr_pm_order=>gs_mail_daata-subject = |the Notification { ls_conf-notificationnumber } has Confirmed |.
       lhc_zr_pm_order=>gs_mail_daata-body = |the order { ls_conf-MaintenanceOrder } status has been Confirmed for your Notification { ls_conf-notificationnumber } please Approve the Order |.
@@ -952,6 +1162,10 @@ CLASS lsc_ZR_PM_ORDER IMPLEMENTATION.
           ) TO reported-zr_pm_order.
 
         ENDLOOP.
+        "elseif ls_aprv-_ar = 'Q'.
+        "          lt_methods-refnumber  = '000001'.
+        "lt_methods-objecttype = 'HEADER'.
+        "lt_methods-method     = 'CREATETONOTIF'.
 
       ENDIF.
       IF lv_err_a = abap_false OR ls_aprv-_ar = 'R'.
@@ -1013,6 +1227,8 @@ CLASS lsc_ZR_PM_ORDER IMPLEMENTATION.
 
       ls_methods-refnumber  = '000001'.
 
+
+      " 1. Loop through the group and route actions to the correct tables
       LOOP AT lhc_zr_pm_order=>gt_order_component_buffer INTO ls_comp_action
       WHERE updkz = 'I' OR updkz = 'U'.
         ls_methods-objecttype = 'COMPONENT'.
@@ -1020,10 +1236,13 @@ CLASS lsc_ZR_PM_ORDER IMPLEMENTATION.
         CONCATENATE ls_comp_action-MaintenanceOrder ls_comp_action-ReservationItem INTO ls_methods-objectkey.
         APPEND ls_methods TO lt_methods.
 
+        "IF ls_comp_action-MaintenanceOrderOperation IS INITIAL.
         SELECT SINGLE vornr rsnum INTO (ls_comp_action-MaintenanceOrderOperation,ls_component-reserv_no )
         FROM afvc AS c INNER JOIN
              caufv AS o ON o~aufpl EQ c~aufpl
              WHERE  o~aufnr EQ ls_comp_h-MaintenanceOrder.
+        "ENDIF..
+
 
         ls_component-res_item             = ls_comp_action-ReservationItem.
         ls_component-activity             = ls_comp_action-MaintenanceOrderOperation.
@@ -1050,6 +1269,7 @@ CLASS lsc_ZR_PM_ORDER IMPLEMENTATION.
 
       ENDLOOP.
 
+      "reading component for prepare deleting
       DATA: lt_components TYPE STANDARD TABLE OF bapi_alm_order_component_e.
 
       CALL FUNCTION 'BAPI_ALM_ORDER_GET_DETAIL'
@@ -1093,6 +1313,8 @@ CLASS lsc_ZR_PM_ORDER IMPLEMENTATION.
       CALL FUNCTION 'BAPI_ALM_ORDER_MAINTAIN'
         TABLES
           it_methods      = lt_methods
+*         it_header       = lt_header
+*         it_header_up    = lt_header_up
           it_component    = lt_component
           it_component_up = lt_component_up
           return          = lt_return_cd
@@ -1129,6 +1351,8 @@ CLASS lsc_ZR_PM_ORDER IMPLEMENTATION.
 
       ls_methods-refnumber  = '000001'.
 
+
+      " 1. Loop through the group and route actions to the correct tables
       LOOP AT lhc_zr_pm_order=>gt_order_operation_buffer INTO DATA(ls_opt_action)
       WHERE updkz = 'I' OR updkz = 'U'.
         ls_methods-objecttype = 'OPERATION'.
@@ -1152,6 +1376,7 @@ CLASS lsc_ZR_PM_ORDER IMPLEMENTATION.
 
       ENDLOOP.
 
+      "reading operation for prepare deleting
       DATA: lt_operations1 TYPE STANDARD TABLE OF bapi_alm_order_operation_e.
 
       CALL FUNCTION 'BAPI_ALM_ORDER_GET_DETAIL'
@@ -1185,6 +1410,8 @@ CLASS lsc_ZR_PM_ORDER IMPLEMENTATION.
       CALL FUNCTION 'BAPI_ALM_ORDER_MAINTAIN'
         TABLES
           it_methods      = lt_methods
+*         it_header       = lt_header
+*         it_header_up    = lt_header_up
           it_operation    = lt_operation
           it_operation_up = lt_operation_up
           return          = lt_return_cd
@@ -1211,6 +1438,7 @@ CLASS lsc_ZR_PM_ORDER IMPLEMENTATION.
   ENDMETHOD.
 
   METHOD cleanup.
+    " BUFFER TEMİZLİĞİ: Hata durumunda (Rollback) tamponun sıfırlanması şarttır.
     CLEAR lhc_zr_pm_order=>gt_order_start_buffer.
     CLEAR lhc_zr_pm_order=>gt_order_confirm_buffer.
     CLEAR lhc_zr_pm_order=>gt_order_approve_buffer.
