@@ -39,7 +39,7 @@ authorization master ( instance )
 
   association _Component { create;  with draft; }
   association _Operation { create;  with draft; }
-  association _Partner ;
+  association _Partner { create; with draft; }
   association _Status ;
 }
 
@@ -78,7 +78,7 @@ authorization dependent by _Order
   update;
   delete;
 
-  field ( readonly ) MaintenanceOrder, Partner, PartnerFunction, PartnerCounter;
+  field ( readonly ) MaintenanceOrder, PartnerFunction, PartnerCounter;
   association _Order  { with draft; }
 }
 define behavior for ZR_PM_ORDER_STATUS //alias <alias_name>

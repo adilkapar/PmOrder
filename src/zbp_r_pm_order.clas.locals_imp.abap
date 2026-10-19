@@ -1,26 +1,3 @@
-CLASS lhc_zr_pm_order_partner DEFINITION INHERITING FROM cl_abap_behavior_handler.
-
-  PRIVATE SECTION.
-
-    METHODS read FOR READ
-      IMPORTING keys FOR READ zr_pm_order_partner RESULT result.
-
-    METHODS rba_Order FOR READ
-      IMPORTING keys_rba FOR READ zr_pm_order_partner\_Order FULL result_requested RESULT result LINK association_links.
-
-ENDCLASS.
-
-CLASS lhc_zr_pm_order_partner IMPLEMENTATION.
-
-  METHOD read.
-  ENDMETHOD.
-
-  METHOD rba_Order.
-  ENDMETHOD.
-
-ENDCLASS.
-
-
 CLASS lhc_ZR_PM_ORDER DEFINITION INHERITING FROM cl_abap_behavior_handler.
   PUBLIC SECTION.
     TYPES: BEGIN OF ty_mail,
@@ -79,12 +56,18 @@ CLASS lhc_ZR_PM_ORDER DEFINITION INHERITING FROM cl_abap_behavior_handler.
     TYPES: updkz(1),
           END OF  ty_order_op.
 
+    TYPES:BEGIN OF ty_order_partner.
+            INCLUDE TYPE zr_pm_order_partner.
+    TYPES: updkz(1),
+          END OF  ty_order_partner.
+
     CLASS-DATA gt_order_update_buffer  TYPE TABLE OF ty_order_update.
     CLASS-DATA gt_order_start_buffer   TYPE TABLE OF ty_order_start.
     CLASS-DATA gt_order_confirm_buffer TYPE TABLE OF ty_order_confirm.
     CLASS-DATA gt_order_approve_buffer TYPE TABLE OF ty_order_approve.
     CLASS-DATA gt_order_component_buffer TYPE TABLE OF ty_order_comp.
     CLASS-DATA gt_order_operation_buffer TYPE TABLE OF ty_order_op.
+    CLASS-DATA gt_order_partner_buffer   TYPE TABLE OF ty_order_partner.
     CLASS-DATA gs_mail_Daata TYPE ty_mail.
 
     CLASS-METHODS sending_email
@@ -138,6 +121,9 @@ CLASS lhc_ZR_PM_ORDER DEFINITION INHERITING FROM cl_abap_behavior_handler.
     METHODS cba_Operation FOR MODIFY
       IMPORTING entities_cba FOR CREATE zr_pm_order\_Operation.
 
+    METHODS cba_Partner FOR MODIFY
+      IMPORTING entities_cba FOR CREATE zr_pm_order\_Partner.
+
     METHODS is_notifier
       IMPORTING iv_aufnr         TYPE aufnr
       RETURNING VALUE(rv_result) TYPE abap_bool.
@@ -157,43 +143,48 @@ ENDCLASS.
 
 CLASS lhc_ZR_PM_ORDER IMPLEMENTATION.
   METHOD cba_Component.
-    DATA: lv_max_item_i(4) TYPE n.
-    LOOP AT entities_cba INTO DATA(ls_comp).
-      " 1. Veritabanından bu siparişe ait en büyük kalem numarasını bul (Tablo adını kendi tablona göre düzelt)
-      SELECT SINGLE MAX( reservationitem ) AS reservationitem, MaintenanceOrderOperation
-        FROM zr_pm_order_comp " <-- Veritabanı tablonuzun adını buraya yazın
-        WHERE maintenanceorder = @ls_comp-%key-maintenanceorder
-        GROUP BY MaintenanceOrderOperation
-        INTO @DATA(lv_db_max).
-      IF sy-subrc IS NOT INITIAL.
-        SELECT SINGLE vornr INTO lv_db_max-MaintenanceOrderOperation
-        FROM afvc AS c INNER JOIN
-             caufv AS o ON o~aufpl EQ c~aufpl
-             WHERE  o~aufnr EQ ls_comp-%key-maintenanceorder.
-      ENDIF..
-      lv_max_item_i = lv_db_max-reservationitem.
+    DATA: lv_max_item_i TYPE i,
+          lv_operation  TYPE zr_pm_order_comp-maintenanceorderoperation.
 
-      " 2. Aynı LUW içinde daha önce buffer'a eklenmiş kalemler varsa en büyüğünü al
+    LOOP AT entities_cba INTO DATA(ls_comp).
+
+      SELECT SINGLE MAX( reservationitem )
+        FROM zr_pm_order_comp
+        WHERE maintenanceorder = @ls_comp-%key-maintenanceorder
+        INTO @DATA(lv_db_max_item).
+
+      SELECT SINGLE MIN( c~vornr )
+        FROM afvc AS c INNER JOIN caufv AS o ON o~aufpl EQ c~aufpl
+        WHERE o~aufnr EQ @ls_comp-%key-maintenanceorder
+        INTO @DATA(lv_vornr).
+      lv_operation = lv_vornr.
+
+      lv_max_item_i = lv_db_max_item.
       LOOP AT gt_order_component_buffer INTO DATA(ls_buf)
            WHERE maintenanceorder = ls_comp-%key-maintenanceorder.
         IF CONV i( ls_buf-reservationitem ) > lv_max_item_i.
           lv_max_item_i = CONV i( ls_buf-reservationitem ).
         ENDIF.
       ENDLOOP.
-      lv_max_item_i = CONV i( lv_db_max-reservationitem ) + 1.
+
       LOOP AT ls_comp-%target INTO DATA(ls_target).
+        lv_max_item_i = lv_max_item_i + 1.
+
+        DATA(lv_new_item) = CONV zr_pm_order_comp-reservationitem( lv_max_item_i ).
+
         APPEND INITIAL LINE TO gt_order_component_buffer ASSIGNING FIELD-SYMBOL(<new>).
         MOVE-CORRESPONDING ls_target TO <new>.
-        <new>-MaintenanceOrder = ls_comp-%key-MaintenanceOrder.
-        <new>-updkz = 'I'.
-        <new>-ReservationItem = |{ lv_max_item_i ALPHA = IN }|.
-        <new>-MaintenanceOrderOperation = lv_db_max-MaintenanceOrderOperation.
+        <new>-MaintenanceOrder              = ls_comp-%key-MaintenanceOrder.
+        <new>-updkz                         = 'I'.
+        <new>-ReservationItem               = lv_new_item.
+        <new>-MaintenanceOrderOperation     = lv_operation.
+        <new>-MaintOrderComponentInternalID = lv_new_item.
         INSERT VALUE #( %cid                          = ls_target-%cid
-                        MaintenanceOrder              = ls_comp-MaintenanceOrder
-                        MaintOrderComponentInternalID = ls_target-MaintOrderComponentInternalID
-                        ReservationItem               = ls_target-ReservationItem
+                        MaintenanceOrder              = ls_comp-%key-MaintenanceOrder
+                        MaintOrderComponentInternalID = <new>-MaintOrderComponentInternalID
+                        ReservationItem               = <new>-ReservationItem
                       )
-       INTO TABLE mapped-component.
+          INTO TABLE mapped-component.
       ENDLOOP.
     ENDLOOP.
   ENDMETHOD.
@@ -231,6 +222,47 @@ CLASS lhc_ZR_PM_ORDER IMPLEMENTATION.
     ENDLOOP.
 
   ENDMETHOD.
+
+  METHOD cba_Partner.
+    DATA: lv_max_counter TYPE i.
+
+    LOOP AT entities_cba INTO DATA(ls_part).
+
+      SELECT SINGLE MAX( partnercounter )
+        FROM zv_pm_order_partner
+        WHERE maintenanceorder = @ls_part-%key-maintenanceorder
+        INTO @DATA(lv_db_max_cnt).
+
+      lv_max_counter = lv_db_max_cnt.
+      LOOP AT gt_order_partner_buffer INTO DATA(ls_buf)
+           WHERE maintenanceorder = ls_part-%key-maintenanceorder.
+        IF CONV i( ls_buf-partnercounter ) > lv_max_counter.
+          lv_max_counter = CONV i( ls_buf-partnercounter ).
+        ENDIF.
+      ENDLOOP.
+
+      LOOP AT ls_part-%target INTO DATA(ls_target).
+
+        lv_max_counter = lv_max_counter + 1.
+        DATA(lv_new_cnt) = CONV zr_pm_order_partner-partnercounter( lv_max_counter ).
+
+        APPEND INITIAL LINE TO gt_order_partner_buffer ASSIGNING FIELD-SYMBOL(<new>).
+        MOVE-CORRESPONDING ls_target TO <new>.
+        <new>-MaintenanceOrder = ls_part-%key-MaintenanceOrder.
+        <new>-PartnerFunction  = 'VU'.
+        <new>-PartnerCounter   = lv_new_cnt.
+        <new>-updkz            = 'I'.
+
+        INSERT VALUE #( %cid             = ls_target-%cid
+                        MaintenanceOrder = ls_part-%key-MaintenanceOrder
+                        PartnerFunction  = <new>-PartnerFunction
+                        PartnerCounter   = <new>-PartnerCounter
+                      )
+          INTO TABLE mapped-zr_pm_order_partner.
+      ENDLOOP.
+    ENDLOOP.
+  ENDMETHOD.
+
   METHOD sending_email.
     DATA: lo_send_request TYPE REF TO cl_bcs,
           lo_document     TYPE REF TO cl_document_bcs,
@@ -777,6 +809,62 @@ CLASS lhc_ZR_PM_ORDER IMPLEMENTATION.
 
 
 
+ENDCLASS.
+
+
+" =====================================================================
+" PARTNER HANDLER
+" =====================================================================
+CLASS lhc_zr_pm_order_partner DEFINITION INHERITING FROM cl_abap_behavior_handler.
+  PRIVATE SECTION.
+    METHODS read FOR READ
+      IMPORTING keys FOR READ zr_pm_order_partner RESULT result.
+    METHODS rba_Order FOR READ
+      IMPORTING keys_rba FOR READ zr_pm_order_partner\_Order FULL result_requested RESULT result LINK association_links.
+    METHODS update FOR MODIFY
+      IMPORTING entities FOR UPDATE zr_pm_order_partner.
+    METHODS delete FOR MODIFY
+      IMPORTING keys FOR DELETE zr_pm_order_partner.
+ENDCLASS.
+
+CLASS lhc_zr_pm_order_partner IMPLEMENTATION.
+  METHOD read.
+  ENDMETHOD.
+
+  METHOD rba_Order.
+  ENDMETHOD.
+
+  METHOD update.
+    LOOP AT entities INTO DATA(ls_update).
+      DELETE lhc_ZR_PM_ORDER=>gt_order_partner_buffer
+        WHERE MaintenanceOrder = ls_update-MaintenanceOrder
+          AND PartnerFunction  = ls_update-PartnerFunction
+          AND PartnerCounter   = ls_update-PartnerCounter.
+      APPEND INITIAL LINE TO lhc_ZR_PM_ORDER=>gt_order_partner_buffer ASSIGNING FIELD-SYMBOL(<update>).
+      MOVE-CORRESPONDING ls_update TO <update>.
+      <update>-updkz = 'U'.
+    ENDLOOP.
+  ENDMETHOD.
+
+  METHOD delete.
+    DATA lv_partner TYPE zr_pm_order_partner-partner.
+    LOOP AT keys INTO DATA(ls_deleted_part).
+      CLEAR lv_partner.
+      SELECT SINGLE partner FROM zr_pm_order_partner
+        WHERE maintenanceorder = @ls_deleted_part-MaintenanceOrder
+          AND partnerfunction  = @ls_deleted_part-PartnerFunction
+          AND partnercounter   = @ls_deleted_part-PartnerCounter
+        INTO @lv_partner.
+
+      APPEND VALUE #(
+          MaintenanceOrder = ls_deleted_part-MaintenanceOrder
+          PartnerFunction  = ls_deleted_part-PartnerFunction
+          PartnerCounter   = ls_deleted_part-PartnerCounter
+          Partner          = lv_partner
+          updkz            = 'D'
+      ) TO lhc_ZR_PM_ORDER=>gt_order_partner_buffer.
+    ENDLOOP.
+  ENDMETHOD.
 ENDCLASS.
 
 
@@ -1433,7 +1521,124 @@ CLASS lsc_ZR_PM_ORDER IMPLEMENTATION.
       ENDLOOP.
     ENDIF.
 
+
+    " ──────────────────────────────────────────────
+    " 6) PARTNER modification (function 'VU')
+    "    CREATE / CHANGE -> BAPI_ALM_ORDER_MAINTAIN
+    "    DELETE          -> set deletion flag directly in IHPA (kzloesch),
+    "                       because the ALM BAPI partner interface does not
+    "                       reliably remove partner lines.
+    " ──────────────────────────────────────────────
+    DATA: lt_methods_p    TYPE STANDARD TABLE OF bapi_alm_order_method,
+          ls_methods_p    LIKE LINE OF lt_methods_p,
+          lt_partner_p    TYPE STANDARD TABLE OF bapi_alm_order_partn_mul,
+          ls_partner_p    LIKE LINE OF lt_partner_p,
+          lt_partner_up_p TYPE STANDARD TABLE OF bapi_alm_order_partn_mul_up,
+          ls_partner_up_p LIKE LINE OF lt_partner_up_p,
+          lt_return_p     TYPE bapiret2_t,
+          lt_numbers_p    TYPE STANDARD TABLE OF bapi_alm_numbers,
+          lv_has_cu       TYPE abap_bool.
+
+    " ----- 6a) CREATE / CHANGE via BAPI -----
+    CLEAR lv_has_cu.
+    LOOP AT lhc_zr_pm_order=>gt_order_partner_buffer TRANSPORTING NO FIELDS
+      WHERE updkz = 'I' OR updkz = 'U'.
+      lv_has_cu = abap_true.
+      EXIT.
+    ENDLOOP.
+
+    IF lv_has_cu = abap_true.
+
+      READ TABLE lhc_zr_pm_order=>gt_order_partner_buffer INTO DATA(ls_part_h) INDEX 1.
+
+      ls_methods_p-refnumber  = '000001'.
+      ls_methods_p-objecttype = ''.
+      ls_methods_p-method     = 'SAVE'.
+      ls_methods_p-objectkey  = ls_part_h-MaintenanceOrder.
+      APPEND ls_methods_p TO lt_methods_p. CLEAR ls_methods_p.
+
+      ls_methods_p-refnumber  = '000001'.
+
+      LOOP AT lhc_zr_pm_order=>gt_order_partner_buffer INTO DATA(ls_part_action)
+        WHERE updkz = 'I' OR updkz = 'U'.
+        CLEAR: ls_partner_p, ls_partner_up_p.
+
+        ls_methods_p-objecttype = 'PARTNER'.
+        ls_methods_p-method     = COND #( WHEN ls_part_action-updkz EQ 'I' THEN 'CREATE' ELSE 'CHANGE' ).
+        ls_methods_p-objectkey  = ls_part_action-MaintenanceOrder.
+        APPEND ls_methods_p TO lt_methods_p.
+
+        ls_partner_p-orderid    = ls_part_action-MaintenanceOrder.
+        ls_partner_p-partn_role = ls_part_action-PartnerFunction.   " always 'VU'
+        ls_partner_p-partner    = ls_part_action-Partner.
+        APPEND ls_partner_p TO lt_partner_p.
+
+        ls_partner_up_p-orderid    = ls_part_action-MaintenanceOrder.
+        ls_partner_up_p-partn_role = abap_true.
+        ls_partner_up_p-partner    = abap_true.
+        APPEND ls_partner_up_p TO lt_partner_up_p.
+
+        ADD 1 TO ls_methods_p-refnumber.
+      ENDLOOP.
+
+      CALL FUNCTION 'BAPI_ALM_ORDER_MAINTAIN'
+        TABLES
+          it_methods    = lt_methods_p
+          it_partner    = lt_partner_p
+          it_partner_up = lt_partner_up_p
+          return        = lt_return_p
+          et_numbers    = lt_numbers_p.
+
+      LOOP AT lt_return_p INTO DATA(ls_return_p) WHERE type CA 'EA'.
+        APPEND VALUE #(
+          %tky = VALUE #( maintenanceorder = ls_part_action-maintenanceorder
+                          partnerfunction  = ls_part_action-partnerfunction
+                          partnercounter   = ls_part_action-partnercounter )
+          %msg = new_message(
+                          id       = ls_return_p-id
+                          number   = ls_return_p-number
+                          severity = if_abap_behv_message=>severity-error
+                          v1       = ls_return_p-message_v1
+                          v2       = ls_return_p-message_v2
+                          v3       = ls_return_p-message_v3
+                          v4       = ls_return_p-message_v4 )
+        ) TO reported-zr_pm_order_partner.
+      ENDLOOP.
+    ENDIF.
+
+    " ----- 6b) DELETE via deletion flag in IHPA -----
+    LOOP AT lhc_zr_pm_order=>gt_order_partner_buffer INTO DATA(ls_part_del)
+      WHERE updkz = 'D'.
+
+      DATA(lv_objnr_p) = CONV j_objnr( |OR{ ls_part_del-MaintenanceOrder }| ).
+
+      UPDATE ihpa
+        SET   kzloesch = 'X',
+              aedat    = @sy-datum,
+              aezeit   = @sy-uzeit,
+              aenam    = @sy-uname
+        WHERE objnr   = @lv_objnr_p
+          AND parvw   = @ls_part_del-PartnerFunction
+          AND counter = @ls_part_del-PartnerCounter.
+
+      IF sy-subrc <> 0.
+        APPEND VALUE #(
+          %tky = VALUE #( maintenanceorder = ls_part_del-maintenanceorder
+                          partnerfunction  = ls_part_del-partnerfunction
+                          partnercounter   = ls_part_del-partnercounter )
+          %msg = new_message( id       = '00'
+                              number   = '001'
+                              severity = if_abap_behv_message=>severity-error
+                              v1       = 'Partner could not be deleted:'
+                              v2       = ls_part_del-partner )
+        ) TO reported-zr_pm_order_partner.
+      ENDIF.
+    ENDLOOP.
+
     CLEAR lhc_zr_pm_order=>gt_order_approve_buffer.
+    CLEAR lhc_zr_pm_order=>gt_order_component_buffer.
+    CLEAR lhc_zr_pm_order=>gt_order_operation_buffer.
+    CLEAR lhc_zr_pm_order=>gt_order_partner_buffer.
 
   ENDMETHOD.
 
@@ -1445,6 +1650,7 @@ CLASS lsc_ZR_PM_ORDER IMPLEMENTATION.
     CLEAR lhc_zr_pm_order=>gt_order_update_buffer.
     CLEAR lhc_zr_pm_order=>gt_order_operation_buffer.
     CLEAR lhc_zr_pm_order=>gt_order_component_buffer.
+    CLEAR lhc_zr_pm_order=>gt_order_partner_buffer.
   ENDMETHOD.
 
   METHOD cleanup_finalize.

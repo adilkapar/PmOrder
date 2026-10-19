@@ -23,6 +23,7 @@ define behavior for ZC_PM_ORDER
 
   use association _Component { create; }
   use association _Operation { create; }
+  use association _Partner { create; }
   use association _Status ;
 }
 
@@ -39,6 +40,14 @@ define behavior for ZC_PM_ORDER_OPERATION
   use delete;
   use association _Order { with draft; }
 }
+
+define behavior for ZC_PM_ORDER_PARTNER
+{
+  use update;
+  use delete;
+  use association _Order { with draft; }
+}
+
 define behavior for ZC_PM_ORDER_STATUS
 {
   use association _Order;
