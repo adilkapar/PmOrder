@@ -1607,33 +1607,122 @@ CLASS lsc_ZR_PM_ORDER IMPLEMENTATION.
     ENDIF.
 
     " ----- 6b) DELETE via deletion flag in IHPA -----
-    LOOP AT lhc_zr_pm_order=>gt_order_partner_buffer INTO DATA(ls_part_del)
+*    LOOP AT lhc_zr_pm_order=>gt_order_partner_buffer INTO DATA(ls_part_del)
+*      WHERE updkz = 'D'.
+*
+*      DATA(lv_objnr_p) = CONV j_objnr( |OR{ ls_part_del-MaintenanceOrder }| ).
+*      UPDATE ihpa
+*              SET   kzloesch = 'X',
+*                    aedat    = @sy-datum,
+*                    aezeit   = @sy-uzeit,
+*                    aenam    = @sy-uname
+*              WHERE objnr   = @lv_objnr_p
+*                AND parvw   = @ls_part_del-PartnerFunction
+*                AND counter = @ls_part_del-PartnerCounter.
+*
+*      IF sy-subrc <> 0.
+*        APPEND VALUE #(
+*          %tky = VALUE #(     maintenanceorder = ls_part_del-maintenanceorder
+*                              partnerfunction  = ls_part_del-partnerfunction
+*                              partnercounter   = ls_part_del-partnercounter )
+*          %msg = new_message( id               = '00'
+*                              number           = '001'
+*                              severity         = if_abap_behv_message=>severity-error
+*                              v1               = 'Partner could not be deleted:'
+*                              v2               = ls_part_del-partner )
+*        ) TO reported-zr_pm_order_partner.
+*      ENDIF.
+*    ENDLOOP.
+
+    " ----- 6b) DELETE via BAPI -----
+    DATA: lt_methods_d    TYPE STANDARD TABLE OF bapi_alm_order_method,
+          ls_methods_d    LIKE LINE OF lt_methods_d,
+          lt_partner_d    TYPE STANDARD TABLE OF bapi_alm_order_partn_mul,
+          ls_partner_d    LIKE LINE OF lt_partner_d,
+          lt_partner_up_d TYPE STANDARD TABLE OF bapi_alm_order_partn_mul_up,
+          ls_partner_up_d LIKE LINE OF lt_partner_up_d,
+          lt_return_d     TYPE bapiret2_t,
+          lt_numbers_d    TYPE STANDARD TABLE OF bapi_alm_numbers,
+          lv_has_del      TYPE abap_bool.
+
+    CLEAR lv_has_del.
+    LOOP AT lhc_zr_pm_order=>gt_order_partner_buffer TRANSPORTING NO FIELDS
       WHERE updkz = 'D'.
+      lv_has_del = abap_true.
+      EXIT.
+    ENDLOOP.
 
-      DATA(lv_objnr_p) = CONV j_objnr( |OR{ ls_part_del-MaintenanceOrder }| ).
+    IF lv_has_del = abap_true.
 
-      UPDATE ihpa
-        SET   kzloesch = 'X',
-              aedat    = @sy-datum,
-              aezeit   = @sy-uzeit,
-              aenam    = @sy-uname
-        WHERE objnr   = @lv_objnr_p
-          AND parvw   = @ls_part_del-PartnerFunction
-          AND counter = @ls_part_del-PartnerCounter.
+      READ TABLE lhc_zr_pm_order=>gt_order_partner_buffer
+        INTO DATA(ls_del_h) WITH KEY updkz = 'D'.
 
-      IF sy-subrc <> 0.
+      " ── SAVE method (always required) ──
+      ls_methods_d-refnumber  = '000001'.
+      ls_methods_d-objecttype = ''.
+      ls_methods_d-method     = 'SAVE'.
+      ls_methods_d-objectkey  = ls_del_h-MaintenanceOrder.
+      APPEND ls_methods_d TO lt_methods_d.
+      CLEAR ls_methods_d.
+
+      ls_methods_d-refnumber = '000001'.
+
+      " ── One DELETE method entry per partner to remove ──
+      " ── ONE DELETE method entry for ALL partners of this order ──
+      ls_methods_d-objecttype = 'PARTNER'.
+      ls_methods_d-method     = 'DELETE'.
+      ls_methods_d-objectkey  = ls_del_h-MaintenanceOrder.
+      APPEND ls_methods_d TO lt_methods_d.
+
+      " ── Partner data: one entry per partner to remove ──
+      LOOP AT lhc_zr_pm_order=>gt_order_partner_buffer
+        INTO DATA(ls_part_del) WHERE updkz = 'D'.
+
+        CLEAR: ls_partner_d, ls_partner_up_d.
+
+        ls_partner_d-orderid        = ls_part_del-MaintenanceOrder.
+        ls_partner_d-partn_role     = ''.
+        ls_partner_d-partner        = ''.
+        ls_partner_d-partn_role_old = ls_part_del-PartnerFunction.
+        ls_partner_d-partner_old    = |{ ls_part_del-Partner ALPHA = IN }|.
+        APPEND ls_partner_d TO lt_partner_d.
+
+        ls_partner_up_d-orderid        = ls_part_del-MaintenanceOrder.
+        ls_partner_up_d-partn_role     = 'X'.
+        ls_partner_up_d-partner        = 'X'.
+        ls_partner_up_d-partn_role_old = ls_part_del-PartnerFunction.
+        ls_partner_up_d-partner_old    = |{ ls_part_del-Partner ALPHA = IN }|.
+        APPEND ls_partner_up_d TO lt_partner_up_d.
+
+      ENDLOOP.
+
+      CALL FUNCTION 'BAPI_ALM_ORDER_MAINTAIN'
+        TABLES
+          it_methods    = lt_methods_d
+          it_partner    = lt_partner_d
+          it_partner_up = lt_partner_up_d
+          return        = lt_return_d
+          et_numbers    = lt_numbers_d.
+
+      " ── Error handling ──
+      LOOP AT lt_return_d INTO DATA(ls_ret_d) WHERE type CA 'EA'.
         APPEND VALUE #(
-          %tky = VALUE #( maintenanceorder = ls_part_del-maintenanceorder
+          %tky = VALUE #(
+                          maintenanceorder = ls_part_del-maintenanceorder
                           partnerfunction  = ls_part_del-partnerfunction
                           partnercounter   = ls_part_del-partnercounter )
-          %msg = new_message( id       = '00'
-                              number   = '001'
-                              severity = if_abap_behv_message=>severity-error
-                              v1       = 'Partner could not be deleted:'
-                              v2       = ls_part_del-partner )
+          %msg = new_message(
+                          id               = ls_ret_d-id
+                          number           = ls_ret_d-number
+                          severity         = if_abap_behv_message=>severity-error
+                          v1               = ls_ret_d-message_v1
+                          v2               = ls_ret_d-message_v2
+                          v3               = ls_ret_d-message_v3
+                          v4               = ls_ret_d-message_v4 )
         ) TO reported-zr_pm_order_partner.
-      ENDIF.
-    ENDLOOP.
+      ENDLOOP.
+
+    ENDIF.
 
     CLEAR lhc_zr_pm_order=>gt_order_approve_buffer.
     CLEAR lhc_zr_pm_order=>gt_order_component_buffer.
