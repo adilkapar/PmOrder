@@ -1,0 +1,6 @@
+@EndUserText.label: 'Action Description'
+define abstract entity ZI_PM_ACTION_NOTE
+{
+  @EndUserText.label: 'Description'
+  Description : abap.char(500);
+}

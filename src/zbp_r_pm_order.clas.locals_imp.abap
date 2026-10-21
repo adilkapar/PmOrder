@@ -32,16 +32,19 @@ CLASS lhc_ZR_PM_ORDER DEFINITION INHERITING FROM cl_abap_behavior_handler.
              maintenanceorder        TYPE aufnr,
              NotificationCreatedUser TYPE uname,
              notificationnumber      TYPE qmnum,
+             confirmnote             tYPE string,
              conf_start_date         TYPE sy-datum,
              conf_start_time         TYPE sy-uzeit,
              conf_end_date           TYPE sy-datum,
              conf_end_time           TYPE sy-uzeit,
            END OF ty_order_confirm.
 
+
     TYPES: BEGIN OF ty_order_approve,
              _ar                TYPE char1,
              maintenanceorder   TYPE aufnr,
              notificationnumber TYPE qmnum,
+             approvenote        tYPE string,
              actual_start_date  TYPE sy-datum,
              actual_start_time  TYPE sy-uzeit,
              actual_end_date    TYPE sy-datum,
@@ -470,19 +473,19 @@ CLASS lhc_ZR_PM_ORDER IMPLEMENTATION.
 
       CASE lv_status.
         WHEN 'INIT' .
-          IF lv_is_sup = abap_true or lv_is_tec = abap_true.
+          IF lv_is_sup = abap_true OR lv_is_tec = abap_true.
             lv_start_fc = if_abap_behv=>fc-o-enabled.
           ENDIF.
         WHEN 'STARTED' OR 'REJECT'.
-          IF lv_is_sup = abap_true or lv_is_tec = abap_true.
+          IF lv_is_sup = abap_true OR lv_is_tec = abap_true.
             lv_confirm_fc = if_abap_behv=>fc-o-enabled.
           ENDIF.
         WHEN 'CONFIRMED'.
-          IF lv_is_tec = abap_false OR lv_is_notf = abap_true or lv_is_sup = abap_true.
+          IF lv_is_tec = abap_false OR lv_is_notf = abap_true OR lv_is_sup = abap_true.
             lv_approve_fc = if_abap_behv=>fc-o-enabled.
           ENDIF.
         WHEN 'APPROVED'.
-          IF lv_is_tec = abap_false OR lv_is_notf = abap_true or lv_is_sup = abap_true.
+          IF lv_is_tec = abap_false OR lv_is_notf = abap_true OR lv_is_sup = abap_true.
             lv_approve_fc = if_abap_behv=>fc-o-enabled.
           ENDIF.
       ENDCASE.
@@ -586,6 +589,7 @@ CLASS lhc_ZR_PM_ORDER IMPLEMENTATION.
         notificationnumber      = ls_order-MaintenanceNotification
         conf_start_date         = ls_order-MaintOrdBasicStartDate
         conf_start_time         = ls_order-MaintOrdBasicStartTime
+        confirmnote             = ls_key-%param-Description
         conf_end_date           = COND #( WHEN ls_key-%param-ConfEndDate IS INITIAL THEN sy-datum ELSE ls_key-%param-ConfEndDate )
         conf_end_time           = COND #( WHEN ls_key-%param-ConfEndTime IS INITIAL THEN sy-uzeit ELSE ls_key-%param-ConfEndTime )
       ) TO gt_order_confirm_buffer.
@@ -626,6 +630,7 @@ CLASS lhc_ZR_PM_ORDER IMPLEMENTATION.
         _ar                = 'A'
         maintenanceorder   = lv_aufnr
         notificationnumber = ls_order-MaintenanceNotification
+        approvenote             = ls_key-%param-Description
         actual_end_date    = ls_key-%param-ActualEndDate
         actual_end_time    = ls_key-%param-ActualEndTime
       ) TO gt_order_approve_buffer.
@@ -653,11 +658,13 @@ CLASS lhc_ZR_PM_ORDER IMPLEMENTATION.
                             v1 = 'Order is not in CONFIRMED status:' v2 = lv_aufnr ) TO reported-%other.
         CONTINUE.
       ENDIF.
+      READ TABLE keys INTO DATA(ls_key) WITH KEY maintenanceorder = lv_aufnr.
 
       APPEND VALUE ty_order_approve(
         _ar                = 'R'
         maintenanceorder   = lv_aufnr
         notificationnumber = ls_order-MaintenanceNotification
+        approvenote        = ls_key-%param-Description
       ) TO gt_order_approve_buffer.
 
       INSERT VALUE #( maintenanceorder = lv_aufnr %param = CORRESPONDING #( ls_order ) ) INTO TABLE result.
@@ -1141,6 +1148,7 @@ CLASS lsc_ZR_PM_ORDER IMPLEMENTATION.
         TABLES
           timetickets   = lt_timetickets
           detail_return = lt_alm_ret.
+      update zpm_act_notes set approvenote = ls_conf-confirmnote wHERE aufnr = ls_conf-maintenanceorder.
 
       DATA(lv_err_c) = abap_false.
       LOOP AT lt_alm_ret INTO DATA(ls_alm_ret) WHERE type CA 'EA'.
@@ -1207,6 +1215,8 @@ CLASS lsc_ZR_PM_ORDER IMPLEMENTATION.
               lt_return_hdr      TYPE TABLE OF bapiret2.
         CLEAR: ls_header_update, ls_header_update_x, lt_return_hdr.
 
+
+
         ls_header_update-endmlfndate   = ls_aprv-actual_end_date.
         ls_header_update_x-endmlfndate = 'X'.
 
@@ -1220,6 +1230,8 @@ CLASS lsc_ZR_PM_ORDER IMPLEMENTATION.
             notifheader_x = ls_header_update_x
           TABLES
             return        = lt_return_hdr.
+
+        update zpm_act_notes set approvenote = ls_aprv-approvenote wHERE aufnr = ls_aprv-notificationnumber.
 
         DATA(lv_hdr_error) = abap_false.
         LOOP AT lt_return_hdr TRANSPORTING NO FIELDS WHERE type = 'E' OR type = 'A'.
@@ -1267,6 +1279,8 @@ CLASS lsc_ZR_PM_ORDER IMPLEMENTATION.
             status_inconsistent = 2
             status_not_allowed  = 3
             OTHERS              = 4.
+        update zpm_act_notes set rejectnote = ls_aprv-approvenote wHERE aufnr = ls_aprv-maintenanceorder.
+
       ENDIF.
 
       LOOP AT lt_partners_all INTO DATA(ls_partner) WHERE MaintenanceOrder = ls_aprv-maintenanceorder.
@@ -1595,13 +1609,13 @@ CLASS lsc_ZR_PM_ORDER IMPLEMENTATION.
                           partnerfunction  = ls_part_action-partnerfunction
                           partnercounter   = ls_part_action-partnercounter )
           %msg = new_message(
-                          id       = ls_return_p-id
-                          number   = ls_return_p-number
-                          severity = if_abap_behv_message=>severity-error
-                          v1       = ls_return_p-message_v1
-                          v2       = ls_return_p-message_v2
-                          v3       = ls_return_p-message_v3
-                          v4       = ls_return_p-message_v4 )
+                          id               = ls_return_p-id
+                          number           = ls_return_p-number
+                          severity         = if_abap_behv_message=>severity-error
+                          v1               = ls_return_p-message_v1
+                          v2               = ls_return_p-message_v2
+                          v3               = ls_return_p-message_v3
+                          v4               = ls_return_p-message_v4 )
         ) TO reported-zr_pm_order_partner.
       ENDLOOP.
     ENDIF.
@@ -1695,6 +1709,7 @@ CLASS lsc_ZR_PM_ORDER IMPLEMENTATION.
         APPEND ls_partner_up_d TO lt_partner_up_d.
 
       ENDLOOP.
+
 
       CALL FUNCTION 'BAPI_ALM_ORDER_MAINTAIN'
         TABLES

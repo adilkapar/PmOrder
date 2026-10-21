@@ -143,6 +143,13 @@ define root view entity ZC_PM_ORDER   provider contract transactional_query
       _StatusObject,
       _StatusObjectActiveStatus,
       _CreatedByUser,
+      getri,
+      geuzi, 
+      //notes
+      Confirmnote,
+      Rejectnote,
+      Approvenote,
+      
       // SAP standard sub-entity'ler — ZC projection'larına yönlendir
       _Operation  : redirected to composition child ZC_PM_ORDER_OPERATION,
       _Component  : redirected to composition child ZC_PM_ORDER_COMP,

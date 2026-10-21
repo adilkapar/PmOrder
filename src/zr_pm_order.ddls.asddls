@@ -12,6 +12,7 @@ define root view entity ZR_PM_ORDER
   as select from    I_MaintenanceOrder as _order
     left outer join ZV_PM_ORDER_STATUS as j on j.MaintenanceOrder = _order.MaintenanceOrder
     left outer join afko                    on afko.aufnr = _order.MaintenanceOrder
+    left outer join zpm_act_notes as notes on notes.aufnr = _order.MaintenanceOrder
   association [0..*] to ZV_PM_ORDER_PARTNER_CUSER as _vpartner on $projection.MaintenanceOrder = _vpartner.MaintenanceOrder
   composition [0..*] of ZR_PM_ORDER_OPERATION     as _Operation
   composition [0..*] of ZR_PM_ORDER_COMP          as _Component
@@ -125,6 +126,10 @@ define root view entity ZR_PM_ORDER
       _Component,
       _Partner,
       _Status,
+      //notes
+      notes.confirmnote as Confirmnote,
+      notes.rejectnote as Rejectnote,
+      notes.approvenote as Approvenote,
       //calcuılated fields
       j.BStatus1,
       j.BStatus2,
@@ -179,7 +184,8 @@ define root view entity ZR_PM_ORDER
             ) / 3600.0 as abap.dec( 10, 2 ) )
 
         end                                         as break_down_duration,
-
+        afko.getri,
+        afko.geuzi,
 
       /* ==================================================================== */
       /* 2. ALAN: task_duration                                               */

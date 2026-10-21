@@ -52,11 +52,15 @@ annotate entity ZC_PM_ORDER
   @UI.lineItem:       [{ position: 90, label: 'Work Center' }]
   WorkCenterInternalID;
 
+  @UI.lineItem:       [{ position: 100, label: 'Confirm Date' }]  
+  getri;
+  @UI.lineItem:       [{ position: 110, label: 'Confirm Time' }]
+  geuzi;  
   @Consumption.valueHelpDefinition: [{
     entity: { name: 'ZV_PM_ORDER_STATUS_TXT', element: 'Stat' }
   }]
   @UI.selectionField: [{ position: 10 }]
-  Stat;
+  stat;
 
 
   @UI.lineItem: [ 
@@ -132,4 +136,15 @@ annotate entity ZC_PM_ORDER
 
   @UI.fieldGroup: [{ qualifier: 'DatesPlantGroup', position: 200, label: 'Creation Time' }]
   CreationTime;
+
+  @UI.fieldGroup: [{ qualifier: 'DatesPlantGroup', position: 210, label: 'Approve Note' }]
+  Approvenote;
+
+  @UI.fieldGroup: [{ qualifier: 'DatesPlantGroup', position: 220, label: 'Reject Note' }]
+  Rejectnote;
+
+  @UI.fieldGroup: [{ qualifier: 'DatesPlantGroup', position: 230, label: 'Confirm Note' }]
+  Confirmnote;
+
+  
 }
