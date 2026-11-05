@@ -13,7 +13,7 @@ define behavior for ZC_PM_ORDER
   use action Resume;
   use action Prepare;
 
-// ── Action'ları projection'da kullan ──
+  // ── Action'ları projection'da kullan ──
 
   use action start_order;
   use action confirm_order;
@@ -24,7 +24,7 @@ define behavior for ZC_PM_ORDER
   use association _Component { create; }
   use association _Operation { create; }
   use association _Partner { create; }
-  use association _Status ;
+  use association _Status;
 }
 
 define behavior for ZC_PM_ORDER_COMP

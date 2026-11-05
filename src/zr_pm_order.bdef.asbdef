@@ -19,28 +19,30 @@ authorization master ( instance )
   draft action Resume;
   draft determine action Prepare;
 
-  action ( features: instance ) start_order result [1] $self;
+  action ( features : instance ) start_order result [1] $self;
 
-  action ( features: instance ) confirm_order
+  action ( features : instance ) confirm_order
     parameter ZS_PM_CONFIRM_PARAM
 
     result [1] $self;
 
-  action ( features: instance ) approve_order
+  action ( features : instance ) approve_order
     parameter ZS_PM_APPROVE_PARAM result [1] $self;
 
-  action ( features: instance ) reject_order result [1] $self;
+  action ( features : instance ) reject_order
+    parameter ZI_PM_ACTION_NOTE
+  result [1] $self;
 
-  action ( features: instance ) release_order result [1] $self;
+  action ( features : instance ) release_order result [1] $self;
 
-  field ( readonly ) MaintOrdBasicStartDate,MaintOrdBasicStartTime,MaintOrdBasicEndDate,MaintOrdBasicEndTime,TechnicalCompletionDate,
-  LatestAcceptableCompletionDate,MaintOrderReferenceDate,MaintOrderReferenceTime,MainWorkCenterPlant,MaintenancePlant,MaintenancePlannerGroup,
-  CompanyCode,ResponsibleCostCenter,CreationTime;
+  field ( readonly ) MaintOrdBasicStartDate, MaintOrdBasicStartTime, MaintOrdBasicEndDate, MaintOrdBasicEndTime, TechnicalCompletionDate,
+  LatestAcceptableCompletionDate, MaintOrderReferenceDate, MaintOrderReferenceTime, MainWorkCenterPlant, MaintenancePlant, MaintenancePlannerGroup,
+  CompanyCode, ResponsibleCostCenter, CreationTime, approvenote, rejectnote, confirmnote;
 
-  association _Component { create;  with draft; }
-  association _Operation { create;  with draft; }
+  association _Component { create; with draft; }
+  association _Operation { create; with draft; }
   association _Partner { create; with draft; }
-  association _Status ;
+  association _Status;
 }
 
 define behavior for ZR_PM_ORDER_COMP alias component
@@ -70,17 +72,17 @@ authorization dependent by _Order
 }
 
 define behavior for ZR_PM_ORDER_PARTNER //alias <alias_name>
-draft table zpm_orderp_d // <-- Auto-generate this table later
+draft table zpm_orderp_d
 lock dependent by _Order
 authorization dependent by _Order
-//etag master <field_name>
 {
   update;
   delete;
 
   field ( readonly ) MaintenanceOrder, PartnerFunction, PartnerCounter;
-  association _Order  { with draft; }
+  association _Order { with draft; }
 }
+
 define behavior for ZR_PM_ORDER_STATUS //alias <alias_name>
 draft table zpm_orders_d // <-- Auto-generate this table later
 lock dependent by _Order
@@ -91,5 +93,5 @@ authorization dependent by _Order
   delete;
 
   field ( readonly ) Objnr, Stat, Chgnr, MaintenanceOrder;
-  association _Order  { with draft; }
+  association _Order { with draft; }
 }

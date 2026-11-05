@@ -9,4 +9,8 @@ define abstract entity ZS_PM_CONFIRM_PARAM
   @EndUserText.label: 'End Time'
   @ObjectModel.mandatory: true
   ConfEndTime   : abap.tims;
+  
+  @EndUserText.label: 'Description'
+  Description : abap.char(500);
+  
 }

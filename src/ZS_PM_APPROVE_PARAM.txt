@@ -6,4 +6,8 @@ define abstract entity ZS_PM_APPROVE_PARAM
 
   @EndUserText.label: 'Actual End Time'
   ActualEndTime   : abap.tims;
+  
+  @EndUserText.label: 'Description'
+  Description : abap.char(500);
+  
 }
