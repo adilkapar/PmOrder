@@ -581,7 +581,45 @@ CLASS lhc_ZR_PM_ORDER IMPLEMENTATION.
 
       " Parametre okuması için ilgili anahtarı bul
       READ TABLE keys INTO DATA(ls_key) WITH KEY maintenanceorder = lv_aufnr.
+      "date&time validation
+      DATA(lv_conf_date) = COND d( WHEN ls_key-%param-ConfEndDate IS INITIAL THEN sy-datum ELSE ls_key-%param-ConfEndDate ).
+      DATA(lv_conf_time) = COND t( WHEN ls_key-%param-ConfEndTime IS INITIAL THEN sy-uzeit ELSE ls_key-%param-ConfEndTime ).
 
+      " 1. Validation: Malfunction start / notification creation date and time check
+      " Malfunction start date/time (notification creation date/time)
+      DATA(lv_notif_date) = ls_order-NotifCreationDate.
+      DATA(lv_notif_time) = ls_order-NotifCreationTime.
+
+      IF lv_notif_date IS INITIAL.
+        SELECT SINGLE CreationDate, CreationTime
+          FROM I_MaintenanceNotification
+          WHERE MaintenanceNotification = @ls_order-MaintenanceNotification
+          INTO ( @lv_notif_date, @lv_notif_time ).
+      ENDIF.
+
+      IF lv_notif_date IS NOT INITIAL.
+        IF lv_conf_date < lv_notif_date OR ( lv_conf_date = lv_notif_date AND lv_conf_time < lv_notif_time ).
+          APPEND VALUE #( maintenanceorder = lv_aufnr %fail-cause = if_abap_behv=>cause-unspecific ) TO failed-zr_pm_order.
+          APPEND new_message( id       = '00'
+                              number   = '001'
+                              severity = if_abap_behv_message=>severity-error
+                              v1       = 'Confirmation date/time cannot be before'
+                              v2       = 'malfunction start date/time' ) TO reported-%other.
+          CONTINUE.
+        ENDIF.
+      ENDIF.
+
+      " 2. Validation: Future date/time check (cannot be greater than current date/time)
+      IF lv_conf_date > sy-datum OR ( lv_conf_date = sy-datum AND lv_conf_time > sy-uzeit ).
+        APPEND VALUE #( maintenanceorder = lv_aufnr %fail-cause = if_abap_behv=>cause-unspecific ) TO failed-zr_pm_order.
+        APPEND new_message( id       = '00'
+                            number   = '001'
+                            severity = if_abap_behv_message=>severity-error
+                            v1       = 'Confirmation date/time cannot be later'
+                            v2       = 'than current date/time' ) TO reported-%other.
+        CONTINUE.
+      ENDIF.
+      "date&time validation
       " Buffer'a yaz
       APPEND VALUE ty_order_confirm(
         maintenanceorder        = lv_aufnr
@@ -590,8 +628,8 @@ CLASS lhc_ZR_PM_ORDER IMPLEMENTATION.
         conf_start_date         = ls_order-MaintOrdBasicStartDate
         conf_start_time         = ls_order-MaintOrdBasicStartTime
         confirmnote             = ls_key-%param-Description
-        conf_end_date           = COND #( WHEN ls_key-%param-ConfEndDate IS INITIAL THEN sy-datum ELSE ls_key-%param-ConfEndDate )
-        conf_end_time           = COND #( WHEN ls_key-%param-ConfEndTime IS INITIAL THEN sy-uzeit ELSE ls_key-%param-ConfEndTime )
+        conf_end_date           = lv_conf_date
+        conf_end_time           = lv_conf_time
       ) TO gt_order_confirm_buffer.
 
       INSERT VALUE #(
@@ -626,13 +664,51 @@ CLASS lhc_ZR_PM_ORDER IMPLEMENTATION.
 
       READ TABLE keys INTO DATA(ls_key) WITH KEY maintenanceorder = lv_aufnr.
 
+      DATA(lv_aprv_date) = ls_key-%param-ActualEndDate.
+      DATA(lv_aprv_time) = ls_key-%param-ActualEndTime.
+
+      " If approval date/time provided, validate against malfunction start and future timestamp
+      IF lv_aprv_date IS NOT INITIAL.
+        DATA(lv_aprv_notif_date) = ls_order-NotifCreationDate.
+        DATA(lv_aprv_notif_time) = ls_order-NotifCreationTime.
+
+        IF lv_aprv_notif_date IS INITIAL.
+          SELECT SINGLE CreationDate, CreationTime
+            FROM I_MaintenanceNotification
+            WHERE MaintenanceNotification = @ls_order-MaintenanceNotification
+            INTO ( @lv_aprv_notif_date, @lv_aprv_notif_time ).
+        ENDIF.
+
+        IF lv_aprv_notif_date IS NOT INITIAL.
+          IF lv_aprv_date < lv_aprv_notif_date OR ( lv_aprv_date = lv_aprv_notif_date AND lv_aprv_time < lv_aprv_notif_time ).
+            APPEND VALUE #( maintenanceorder = lv_aufnr %fail-cause = if_abap_behv=>cause-unspecific ) TO failed-zr_pm_order.
+            APPEND new_message( id       = '00'
+                                number   = '001'
+                                severity = if_abap_behv_message=>severity-error
+                                v1       = 'Approval end date/time cannot be before'
+                                v2       = 'malfunction start date/time' ) TO reported-%other.
+            CONTINUE.
+          ENDIF.
+        ENDIF.
+
+        IF lv_aprv_date > sy-datum OR ( lv_aprv_date = sy-datum AND lv_aprv_time > sy-uzeit ).
+          APPEND VALUE #( maintenanceorder = lv_aufnr %fail-cause = if_abap_behv=>cause-unspecific ) TO failed-zr_pm_order.
+          APPEND new_message( id       = '00'
+                              number   = '001'
+                              severity = if_abap_behv_message=>severity-error
+                              v1       = 'Approval end date/time cannot be later'
+                              v2       = 'than current date/time' ) TO reported-%other.
+          CONTINUE.
+        ENDIF.
+      ENDIF.
+
       APPEND VALUE ty_order_approve(
         _ar                = 'A'
         maintenanceorder   = lv_aufnr
         notificationnumber = ls_order-MaintenanceNotification
         approvenote             = ls_key-%param-Description
-        actual_end_date    = ls_key-%param-ActualEndDate
-        actual_end_time    = ls_key-%param-ActualEndTime
+        actual_end_date    = lv_aprv_date
+        actual_end_time    = lv_aprv_time
       ) TO gt_order_approve_buffer.
 
       INSERT VALUE #( maintenanceorder = lv_aufnr %param = CORRESPONDING #( ls_order ) ) INTO TABLE result.

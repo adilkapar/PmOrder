@@ -72,6 +72,8 @@ define root view entity ZC_PM_ORDER   provider contract transactional_query
       MaintenanceOrderDesc,
       MaintPriority,
       MaintPriorityType,
+      NotifCreationDate,
+      NotifCreationTime,
       MaintenanceNotification,
       stat,
       CreationDate,
