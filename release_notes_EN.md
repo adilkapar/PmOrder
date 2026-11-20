@@ -94,6 +94,34 @@ For example: you cannot add a component and add a partner in the same save. Save
 
 ---
 
+---
+
+## Action Notes (Confirm / Approve / Reject) — Persistence Fix
+
+### 7. Confirm note is now saved on first confirmation
+
+**Before:** When an order was confirmed for the first time, the confirmation note entered in the popup was silently lost because the system attempted an UPDATE on a row that did not yet exist in `ZPM_ACT_NOTES`.
+
+**After:** The system now reads the existing row first (if any) and uses MODIFY, which inserts a new row on first use and updates it on subsequent actions. The note is always saved.
+
+---
+
+### 8. Re-confirming after a reject no longer clears the reject note
+
+**Before:** If an order was rejected and then re-confirmed, the reject note previously saved against that order was wiped out because the entire row was overwritten with only the confirm note.
+
+**After:** Each action (Confirm, Approve, Reject) reads the existing row, updates only its own note field, and writes back — leaving the other note fields untouched. All three notes (confirm, approve, reject) are preserved independently across the full lifecycle of an order.
+
+---
+
+### 9. Approve note bug fix — wrong key used
+
+**Before:** The approve note UPDATE used the notification number as the database key instead of the maintenance order number, meaning it matched the wrong record (or no record at all) and the approve note was never saved.
+
+**After:** The correct maintenance order number is now used as the key for all three note operations.
+
+---
+
 ## How to Discard a Draft
 
 If you receive one of the above errors:

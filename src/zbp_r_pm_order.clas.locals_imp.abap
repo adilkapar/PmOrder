@@ -1504,7 +1504,12 @@ CLASS lsc_ZR_PM_ORDER IMPLEMENTATION.
         TABLES
           timetickets   = lt_timetickets
           detail_return = lt_alm_ret.
-      update zpm_act_notes set approvenote = ls_conf-confirmnote wHERE aufnr = ls_conf-maintenanceorder.
+      DATA ls_act_notes_c TYPE zpm_act_notes.
+      SELECT SINGLE * FROM zpm_act_notes INTO ls_act_notes_c
+        WHERE aufnr = ls_conf-maintenanceorder.
+      ls_act_notes_c-aufnr       = ls_conf-maintenanceorder.
+      ls_act_notes_c-confirmnote = ls_conf-confirmnote.
+      MODIFY zpm_act_notes FROM ls_act_notes_c.
 
       DATA(lv_err_c) = abap_false.
       LOOP AT lt_alm_ret INTO DATA(ls_alm_ret) WHERE type CA 'EA'.
@@ -1587,7 +1592,12 @@ CLASS lsc_ZR_PM_ORDER IMPLEMENTATION.
           TABLES
             return        = lt_return_hdr.
 
-        update zpm_act_notes set approvenote = ls_aprv-approvenote wHERE aufnr = ls_aprv-notificationnumber.
+        DATA ls_act_notes_a TYPE zpm_act_notes.
+        SELECT SINGLE * FROM zpm_act_notes INTO ls_act_notes_a
+          WHERE aufnr = ls_aprv-maintenanceorder.
+        ls_act_notes_a-aufnr       = ls_aprv-maintenanceorder.
+        ls_act_notes_a-approvenote = ls_aprv-approvenote.
+        MODIFY zpm_act_notes FROM ls_act_notes_a.
 
         DATA(lv_hdr_error) = abap_false.
         LOOP AT lt_return_hdr TRANSPORTING NO FIELDS WHERE type = 'E' OR type = 'A'.
@@ -1635,7 +1645,14 @@ CLASS lsc_ZR_PM_ORDER IMPLEMENTATION.
             status_inconsistent = 2
             status_not_allowed  = 3
             OTHERS              = 4.
-        update zpm_act_notes set rejectnote = ls_aprv-approvenote wHERE aufnr = ls_aprv-maintenanceorder.
+        IF ls_aprv-_ar = 'R'.
+          DATA ls_act_notes_r TYPE zpm_act_notes.
+          SELECT SINGLE * FROM zpm_act_notes INTO ls_act_notes_r
+            WHERE aufnr = ls_aprv-maintenanceorder.
+          ls_act_notes_r-aufnr      = ls_aprv-maintenanceorder.
+          ls_act_notes_r-rejectnote = ls_aprv-approvenote.
+          MODIFY zpm_act_notes FROM ls_act_notes_r.
+        ENDIF.
 
       ENDIF.
 

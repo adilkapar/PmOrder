@@ -97,6 +97,34 @@ SAP PM iş emri işlemesindeki teknik bir kısıtlama nedeniyle, aynı kayıt i�
 
 ---
 
+---
+
+## Aksiyon Notları (Onayla / Onayla / Reddet) — Kayıt Kalıcılığı Düzeltmesi
+
+### 7. Onay notu artık ilk onaylamada kaydediliyor
+
+**Önceki durum:** Bir iş emri ilk kez onaylandığında, açılır pencerede girilen onay notu sessizce kayboluyordu; çünkü sistem `ZPM_ACT_NOTES` tablosunda henüz mevcut olmayan bir satır için UPDATE işlemi deniyordu.
+
+**Yeni durum:** Sistem önce mevcut satırı okur (varsa), ardından MODIFY kullanır — bu işlem ilk kullanımda yeni satır ekler, sonraki işlemlerde günceller. Not her zaman kaydedilir.
+
+---
+
+### 8. Reddedildikten sonra yeniden onaylama artık ret notunu silmiyor
+
+**Önceki durum:** Bir iş emri reddedildikten sonra yeniden onaylandığında, daha önce kaydedilen ret notu siliniyordu; çünkü tüm satır yalnızca onay notuyla üzerine yazılıyordu.
+
+**Yeni durum:** Her aksiyon (Onayla, Onayla, Reddet) mevcut satırı okur, yalnızca kendi not alanını günceller ve geri yazar — diğer not alanları değiştirilmez. Üç not (onay, uygulayıcı onay, ret) iş emrinin tüm yaşam döngüsü boyunca bağımsız olarak korunur.
+
+---
+
+### 9. Onay notu hatası düzeltildi — yanlış anahtar kullanılıyordu
+
+**Önceki durum:** Onay notu UPDATE işlemi, veritabanı anahtarı olarak bakım emri numarası yerine bildirim numarasını kullanıyordu; bu nedenle yanlış kayıtla eşleşiyor (veya hiç eşleşmiyor) ve onay notu hiç kaydedilemiyordu.
+
+**Yeni durum:** Üç not işleminin tamamında artık doğru bakım emri numarası anahtar olarak kullanılmaktadır.
+
+---
+
 ## Taslak Nasıl Atılır
 
 Yukarıdaki hatalardan birini aldıysanız şu adımları izleyin:
