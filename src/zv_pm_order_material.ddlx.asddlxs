@@ -1,0 +1,22 @@
+@Metadata.layer: #CUSTOMER
+annotate entity ZV_PM_ORDER_MATERIAL with
+{
+  @UI.hidden: true
+  MaintenanceOrder;
+
+  @UI.lineItem: [{ position: 10 }]
+  @UI.selectionField: [{ position: 10 }]
+  Material;
+
+  @UI.lineItem: [{ position: 20 }]
+  @UI.selectionField: [{ position: 15 }]
+  MaterialName;
+
+  @UI.lineItem: [{ position: 30 }]
+  @UI.selectionField: [{ position: 20 }]
+  @Consumption.valueHelpDefinition: [{ entity: { name: 'I_MaterialType', element: 'MaterialType' } }]
+  MaterialType;
+
+  @UI.hidden: true
+  Plant;
+}

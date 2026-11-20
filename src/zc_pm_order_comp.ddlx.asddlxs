@@ -5,7 +5,10 @@ annotate entity ZC_PM_ORDER_COMP with
   ReservationItem;
 
   @Consumption.valueHelpDefinition: [{
-    entity: { name: 'I_MaterialVH', element: 'Material' }
+    entity: { name: 'ZV_PM_ORDER_MATERIAL', element: 'Material' },
+    additionalBinding: [
+      { localElement: 'MaintenanceOrder', element: 'MaintenanceOrder' }
+    ]
   }]
   @UI.lineItem: [{ position: 20, label: 'Material' }]
   Material;
@@ -16,10 +19,10 @@ annotate entity ZC_PM_ORDER_COMP with
   @Consumption.valueHelpDefinition: [{
       entity: { name: 'ZV_PM_ORDER_STOCK', element: 'BatchNumber' },
       additionalBinding: [
-        { localElement: 'Plant',           element: 'Plant' },
         { localElement: 'StorageLocation', element: 'StorageLocation' },
+        { localElement: 'Plant',           element: 'Plant' },
         { localElement: 'Material',        element: 'Material' },
-        { localElement: 'BaseUnit',                       element: 'BaseUnit' }
+        { localElement: 'BaseUnit',        element: 'BaseUnit' }
       ]
     }]
   @UI.lineItem: [{ position: 60, label: 'Batch' }]
